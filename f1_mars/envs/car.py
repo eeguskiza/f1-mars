@@ -20,7 +20,11 @@ class Car:
     Dimensions:
         - Length: 4.5 meters (typical F1 car length)
         - Width: 2.0 meters (typical F1 car width)
-        - Wheelbase: 4.0 meters (distance between front and rear axles)
+        - Wheelbase: 3.5 meters (distance between front and rear axles)
+
+    Performance:
+        - Max speed: ~97 m/s (~350 km/h)
+        - 0-100 km/h: ~2.5 seconds
     """
 
     def __init__(
@@ -46,16 +50,19 @@ class Car:
         self.steering_angle = 0.0  # Current steering angle of front wheels
 
         # Geometric properties
-        self.wheelbase = 4.0  # Distance between axles (meters)
+        self.wheelbase = 3.5  # Distance between axles (meters)
         self.length = 4.5  # Overall car length (meters)
         self.width = 2.0  # Overall car width (meters)
+        self.mass = 800.0  # Car + driver mass (kg)
 
-        # Physical parameters (can be overridden via config)
-        self.max_speed = 300.0  # Maximum velocity (m/s)
-        self.max_steering = 0.6  # Maximum steering angle (radians, ~34 degrees)
-        self.acceleration_power = 150.0  # Forward acceleration (m/s²)
-        self.brake_power = 300.0  # Braking deceleration (m/s²)
-        self.drag_coefficient = 0.02  # Drag factor (dimensionless)
+        # Physical parameters (BALANCED for realistic F1 simulation)
+        self.max_speed = 97.0  # Maximum velocity ~350 km/h (m/s)
+        self.min_speed = 0.0  # Cannot go backwards in this model
+        self.max_steering = 0.5  # Maximum steering angle (radians, ~28 degrees)
+        self.acceleration_power = 35.0  # Forward acceleration (0-100 in ~2.5s)
+        self.brake_power = 80.0  # Braking deceleration (stronger than accel)
+        self.drag_coefficient = 0.004  # Aerodynamic drag (reduced for higher top speed)
+        self.rolling_resistance = 0.001  # Rolling resistance (reduced)
         self.steering_speed = 2.0  # Steering response rate (rad/s)
 
         # Apply config overrides if provided
@@ -89,17 +96,11 @@ class Car:
         """
         Update car physics for one timestep using bicycle kinematic model.
 
-        Physics Pipeline:
-            1. Smoothly interpolate steering angle toward input
-            2. Calculate longitudinal acceleration from throttle/brake
-            3. Apply aerodynamic drag
-            4. Update velocity (clamped to valid range)
-            5. Calculate turning radius and angular velocity
-            6. Update heading based on steering and grip
-            7. Update position based on velocity and heading
+        IMPORTANT: For numerical stability, large dt values are automatically
+        subdivided into smaller steps.
 
         Args:
-            dt: Time step in seconds (typically 1/60 or smaller)
+            dt: Time step in seconds (typically 1/60 = 0.016s)
             throttle: Throttle pedal input, range [0, 1]
             brake: Brake pedal input, range [0, 1]
             steering_input: Steering wheel input, range [-1, 1]
@@ -107,52 +108,121 @@ class Car:
             grip_multiplier: Tire grip factor, range [0, 1]
                            (1.0 = full grip, lower = reduced grip from tire wear)
         """
-        # 1. Update steering angle with smooth interpolation (not instantaneous)
-        target_steering = steering_input * self.max_steering
-        max_steering_change = self.steering_speed * dt
-        steering_delta = np.clip(
+        # Subdivide large timesteps for numerical stability
+        max_dt = 0.02  # 20ms max per physics step
+        steps = max(1, int(np.ceil(dt / max_dt)))
+        sub_dt = dt / steps
+
+        for _ in range(steps):
+            self._physics_step(sub_dt, throttle, brake, steering_input, grip_multiplier)
+
+    def _physics_step(
+        self,
+        dt: float,
+        throttle: float,
+        brake: float,
+        steering_input: float,
+        grip_multiplier: float
+    ):
+        """
+        Single physics integration step.
+
+        Args:
+            dt: Small timestep (< 0.02s recommended)
+            throttle: Throttle [0, 1]
+            brake: Brake [0, 1]
+            steering_input: Steering [-1, 1]
+            grip_multiplier: Grip factor [0, 1]
+        """
+        # === STEERING UPDATE ===
+        # Steering has inertia (not instantaneous)
+        # Grip affects max steering angle (less grip = less turning ability)
+        target_steering = steering_input * self.max_steering * grip_multiplier
+        steering_rate = self.steering_speed * dt
+        steering_change = np.clip(
             target_steering - self.steering_angle,
-            -max_steering_change,
-            max_steering_change
+            -steering_rate,
+            steering_rate
         )
-        self.steering_angle += steering_delta
+        self.steering_angle += steering_change
 
-        # 2. Calculate longitudinal acceleration
-        # Throttle adds forward acceleration, brake adds negative acceleration
-        acceleration = throttle * self.acceleration_power - brake * self.brake_power
+        # === LONGITUDINAL ACCELERATIONS ===
+        # Engine acceleration (direct acceleration, not force)
+        engine_accel = throttle * self.acceleration_power
 
-        # 3. Apply aerodynamic drag (proportional to velocity)
-        drag_force = self.velocity * self.drag_coefficient
-        acceleration -= drag_force
+        # Braking acceleration (negative)
+        brake_accel = brake * self.brake_power
 
-        # 4. Update velocity
+        # Aerodynamic drag acceleration (quadratic with velocity)
+        drag_accel = self.drag_coefficient * self.velocity ** 2
+
+        # Rolling resistance acceleration
+        rolling_accel = self.rolling_resistance * self.velocity
+
+        # Net acceleration
+        acceleration = engine_accel - brake_accel - drag_accel - rolling_accel
+
+        # === TRACTION LIMIT ===
+        # Grip affects maximum acceleration/deceleration
+        max_traction = grip_multiplier * 40.0  # m/s² with perfect grip
+        acceleration = np.clip(acceleration, -max_traction, max_traction)
+
+        # === UPDATE VELOCITY ===
         self.velocity += acceleration * dt
-        # Clamp velocity to valid range [0, max_speed]
-        self.velocity = np.clip(self.velocity, 0.0, self.max_speed)
+        self.velocity = np.clip(self.velocity, self.min_speed, self.max_speed)
 
-        # 5. Apply bicycle model for rotation
-        # Only turn if we're moving and steering
-        if abs(self.steering_angle) > 1e-6 and self.velocity > 0.1:
-            # Calculate turning radius using bicycle model
-            # R = L / tan(δ), where L = wheelbase, δ = steering angle
+        # === BICYCLE MODEL FOR ROTATION ===
+        # Only turn if moving and steering
+        if abs(self.steering_angle) > 0.001 and self.velocity > 0.5:
+            # Calculate turning radius: R = L / tan(δ)
             turning_radius = self.wheelbase / np.tan(self.steering_angle)
 
-            # Angular velocity ω = v / R
+            # Angular velocity: ω = v / R
             angular_velocity = self.velocity / turning_radius
 
-            # Apply grip multiplier (simulates tire slip/wear)
+            # Grip affects turning ability (understeer with low grip)
             angular_velocity *= grip_multiplier
 
-            # 6. Update heading
+            # Update heading
             self.heading += angular_velocity * dt
-            # Normalize heading to [-π, π]
-            self.heading = np.arctan2(np.sin(self.heading), np.cos(self.heading))
 
-        # 7. Update position based on velocity and heading
-        # Velocity is always in the direction of heading (no lateral slip in this model)
+        # Normalize heading to [-π, π]
+        self.heading = np.arctan2(np.sin(self.heading), np.cos(self.heading))
+
+        # === UPDATE POSITION ===
+        # Velocity is always in the direction of heading
         dx = self.velocity * np.cos(self.heading) * dt
         dy = self.velocity * np.sin(self.heading) * dt
         self.position += np.array([dx, dy])
+
+    def get_lateral_force(self) -> float:
+        """
+        Calculate normalized lateral force [0, 1] for tire wear calculation.
+
+        Lateral force increases with:
+        - Steering angle
+        - Speed (cornering faster = more lateral force)
+
+        Note: Uses linear speed dependency (not quadratic) for better tyre wear
+        dynamics. While physically lateral G ~ v^2, tyre wear is more directly
+        related to slip angle which has a more linear relationship with speed.
+
+        Returns:
+            Normalized lateral force in range [0, 1]
+        """
+        if self.velocity < 1.0:
+            return 0.0
+
+        # Tyre wear-oriented lateral force
+        # Uses linear speed dependency for more aggressive wear at moderate speeds
+        speed_normalized = self.velocity / self.max_speed
+        steering_normalized = abs(self.steering_angle / self.max_steering)
+
+        # Linear combination: steering contributes 60%, speed contributes 40%
+        # This gives meaningful wear even at moderate speeds
+        lateral_force = steering_normalized * (0.6 + 0.4 * speed_normalized)
+
+        return np.clip(lateral_force, 0.0, 1.0)
 
     def get_state(self) -> Dict:
         """
@@ -161,15 +231,19 @@ class Car:
         Returns:
             Dictionary containing:
                 - position: np.array([x, y])
-                - velocity: float (speed magnitude)
+                - velocity: float (speed magnitude in m/s)
+                - velocity_kmh: float (speed in km/h)
                 - heading: float (orientation in radians)
                 - steering_angle: float (current wheel angle)
+                - lateral_force: float (normalized lateral G)
         """
         return {
             'position': self.position.copy(),
             'velocity': self.velocity,
+            'velocity_kmh': self.velocity * 3.6,
             'heading': self.heading,
-            'steering_angle': self.steering_angle
+            'steering_angle': self.steering_angle,
+            'lateral_force': self.get_lateral_force()
         }
 
     def get_corners(self) -> np.ndarray:

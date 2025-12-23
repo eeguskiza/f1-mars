@@ -396,6 +396,49 @@ class Track:
 
         return np.array(left_boundary), np.array(right_boundary)
 
+    def get_boundary_segments(self, num_samples: int = 200) -> list:
+        """
+        Get track boundary segments for raycast collision detection.
+
+        Returns list of line segments representing the track edges.
+        This is optimized for LIDAR sensors that need to detect track boundaries.
+
+        Args:
+            num_samples: Number of points to sample along track
+
+        Returns:
+            List of tuples ((x1, y1), (x2, y2)) representing boundary segments
+        """
+        left_boundary, right_boundary = self.get_track_boundaries(num_samples)
+
+        segments = []
+
+        # Left boundary segments
+        for i in range(len(left_boundary) - 1):
+            segments.append((
+                (float(left_boundary[i][0]), float(left_boundary[i][1])),
+                (float(left_boundary[i+1][0]), float(left_boundary[i+1][1]))
+            ))
+        # Close the loop
+        segments.append((
+            (float(left_boundary[-1][0]), float(left_boundary[-1][1])),
+            (float(left_boundary[0][0]), float(left_boundary[0][1]))
+        ))
+
+        # Right boundary segments
+        for i in range(len(right_boundary) - 1):
+            segments.append((
+                (float(right_boundary[i][0]), float(right_boundary[i][1])),
+                (float(right_boundary[i+1][0]), float(right_boundary[i+1][1]))
+            ))
+        # Close the loop
+        segments.append((
+            (float(right_boundary[-1][0]), float(right_boundary[-1][1])),
+            (float(right_boundary[0][0]), float(right_boundary[0][1]))
+        ))
+
+        return segments
+
 
 class TrackGenerator:
     """
@@ -403,14 +446,14 @@ class TrackGenerator:
     """
 
     @staticmethod
-    def generate_oval(length: float = 1000.0, width: float = 80.0,
+    def generate_oval(length: float = 1000.0, width: float = 12.0,
                       aspect_ratio: float = 2.0) -> Dict:
         """
         Generate a simple oval circuit.
 
         Args:
             length: Approximate total track length
-            width: Track width
+            width: Track width in meters (default 12m = F1 standard)
             aspect_ratio: Ratio of straight length to turn radius
 
         Returns:
@@ -468,7 +511,7 @@ class TrackGenerator:
 
     @staticmethod
     def generate_random_track(complexity: int = 10, seed: int = 42,
-                             size: float = 1000.0, width: float = 80.0) -> Dict:
+                             size: float = 1000.0, width: float = 12.0) -> Dict:
         """
         Generate a random circuit using Fourier series for smooth curves.
 

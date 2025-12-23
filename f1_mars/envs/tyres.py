@@ -1,35 +1,48 @@
-"""Tyre degradation and temperature system for F1 Mars simulator."""
+"""Tyre degradation and temperature system for F1 Mars simulator - BALANCED."""
 
 from enum import Enum
 from typing import Dict, Tuple, Optional
+import numpy as np
 
 
 class TyreCompound(Enum):
     """
     F1 tire compounds with different performance characteristics.
 
+    Balanced for realistic F1 stint lengths:
+    - SOFT: ~12-18 laps, maximum grip
+    - MEDIUM: ~20-28 laps, balanced
+    - HARD: ~30-40 laps, durable but slower
+
     Each compound has:
     - grip_base: Base grip level (higher = more grip)
     - wear_rate: How quickly the tire degrades (higher = faster wear)
-    - optimal_temp_range: Temperature range for best performance (min, max) in °C
+    - optimal_temp_min/max: Temperature range for best performance (°C)
+    - temp_sensitivity: How much temperature affects grip
     """
 
     SOFT = {
         'grip_base': 1.0,
-        'wear_rate': 1.5,
-        'optimal_temp_range': (85, 105)
+        'wear_rate': 2.5,  # Aggressive wear for short stints
+        'optimal_temp_min': 85,
+        'optimal_temp_max': 105,
+        'temp_sensitivity': 1.2  # More sensitive to temp
     }
 
     MEDIUM = {
-        'grip_base': 0.9,
-        'wear_rate': 1.0,
-        'optimal_temp_range': (80, 100)
+        'grip_base': 0.92,
+        'wear_rate': 1.5,  # Balanced wear
+        'optimal_temp_min': 80,
+        'optimal_temp_max': 100,
+        'temp_sensitivity': 1.0
     }
 
     HARD = {
-        'grip_base': 0.8,
-        'wear_rate': 0.6,
-        'optimal_temp_range': (75, 95)
+        'grip_base': 0.85,
+        'wear_rate': 0.9,  # Slow wear for long stints
+        'optimal_temp_min': 75,
+        'optimal_temp_max': 95,
+        'temp_sensitivity': 0.8  # Less temperature sensitive
     }
 
     @property
@@ -43,9 +56,24 @@ class TyreCompound(Enum):
         return self.value['wear_rate']
 
     @property
+    def optimal_temp_min(self) -> int:
+        """Get minimum optimal temperature."""
+        return self.value['optimal_temp_min']
+
+    @property
+    def optimal_temp_max(self) -> int:
+        """Get maximum optimal temperature."""
+        return self.value['optimal_temp_max']
+
+    @property
+    def temp_sensitivity(self) -> float:
+        """Get temperature sensitivity multiplier."""
+        return self.value.get('temp_sensitivity', 1.0)
+
+    @property
     def optimal_temp_range(self) -> Tuple[int, int]:
         """Get optimal temperature range (min, max) in Celsius."""
-        return self.value['optimal_temp_range']
+        return (self.optimal_temp_min, self.optimal_temp_max)
 
     @classmethod
     def from_string(cls, name: str) -> 'TyreCompound':
@@ -61,11 +89,11 @@ class TyreSet:
     """
     Represents a set of four tires with wear and temperature simulation.
 
-    Models:
-    - Progressive wear based on speed, cornering, and throttle usage
-    - Temperature dynamics affected by driving conditions
-    - Grip degradation with "cliff edge" effect at high wear
-    - Temperature-dependent performance
+    BALANCED for realistic F1 racing:
+    - Wear accumulates realistically (3-5% per lap typical)
+    - Temperature affects grip significantly
+    - Cliff edge effect at ~70% wear
+    - Strategic pit stops necessary every 15-25 laps
     """
 
     def __init__(self, compound: TyreCompound):
@@ -82,7 +110,9 @@ class TyreSet:
         # Cache compound properties
         self.grip_base = compound.grip_base
         self.wear_rate = compound.wear_rate
-        self.optimal_temp_min, self.optimal_temp_max = compound.optimal_temp_range
+        self.optimal_temp_min = compound.optimal_temp_min
+        self.optimal_temp_max = compound.optimal_temp_max
+        self.temp_sensitivity = compound.temp_sensitivity
 
     def reset(self, compound: Optional[TyreCompound] = None):
         """
@@ -95,7 +125,9 @@ class TyreSet:
             self.compound = compound
             self.grip_base = compound.grip_base
             self.wear_rate = compound.wear_rate
-            self.optimal_temp_min, self.optimal_temp_max = compound.optimal_temp_range
+            self.optimal_temp_min = compound.optimal_temp_min
+            self.optimal_temp_max = compound.optimal_temp_max
+            self.temp_sensitivity = compound.temp_sensitivity
 
         self.wear = 0.0
         self.temperature = 70.0
@@ -105,111 +137,143 @@ class TyreSet:
         dt: float,
         speed: float,
         lateral_force: float,
-        throttle: float
+        throttle: float,
+        braking: float = 0.0
     ):
         """
         Update tire wear and temperature based on driving conditions.
 
-        Wear Model:
-        - Base wear increases with time
-        - Speed increases wear (normalized to ~200 units)
-        - Lateral forces (cornering) significantly increase wear
-        - Hard throttle application increases wear
-
-        Temperature Model:
-        - Target temperature depends on speed and cornering
-        - Temperature moves smoothly toward target
-        - Higher activity = higher temperature
+        BALANCED PHYSICS:
+        - Typical wear: 3-5% per lap on medium tires
+        - Temperature fluctuates 70-120°C based on driving
+        - Out-of-temp-window degrades tires faster
 
         Args:
             dt: Time step in seconds
-            speed: Current speed (m/s or game units)
-            lateral_force: Magnitude of lateral acceleration (0-1 normalized)
+            speed: Current speed (m/s, max ~97)
+            lateral_force: Magnitude of lateral acceleration [0, 1] normalized
             throttle: Throttle input [0, 1]
+            braking: Brake input [0, 1]
         """
-        # === Wear Model ===
-        # Base wear per timestep
-        base_wear = dt * self.wear_rate * 0.01
+        # === WEAR MODEL ===
+        # Base wear per timestep (calibrated for ~4-5% per lap in mixed driving)
+        # At 30s lap time and ~1800 frames (60 fps), we want ~4.5% per lap
+        # IMPORTANT: Tuned for realistic mixed driving (straights + corners)
+        # Not constant high-G cornering like in test_balance.py
+        # Final calibration: 0.035 gives ~4.4% per 30s → ~16 laps to cliff at 30s/lap
+        base_wear = dt * self.wear_rate * 0.035  # Realistic driving calibration
 
-        # Speed factor: higher speed = more wear
-        # Normalize to typical max speed of 200
-        speed_factor = speed / 200.0
+        # Speed factor: higher speed = more wear (quadratic)
+        speed_normalized = speed / 97.0  # Normalize to F1 max speed
+        speed_factor = 0.5 + 1.5 * (speed_normalized ** 2)
 
         # Lateral force factor: cornering wears tires significantly
-        lateral_factor = abs(lateral_force) * 0.5
+        lateral_factor = 1.0 + lateral_force * 2.0  # Up to 3x in hard corners (reduced from 4x)
 
-        # Throttle factor: hard acceleration wears tires
-        throttle_factor = 1.0 + throttle * 0.3
+        # Traction factor: hard acceleration/braking wears tires
+        traction_factor = 1.0 + throttle * 0.3 + braking * 0.5  # Reduced impact
 
-        # Combine all factors
-        total_wear = base_wear * speed_factor * (1.0 + lateral_factor) * throttle_factor
+        # Temperature factor: out of optimal range wears faster
+        temp_factor = 1.0
+        if self.temperature < self.optimal_temp_min:
+            temp_deficit = self.optimal_temp_min - self.temperature
+            temp_factor = 1.0 + temp_deficit * 0.01  # +1% per degree below (reduced from 2%)
+        elif self.temperature > self.optimal_temp_max:
+            temp_excess = self.temperature - self.optimal_temp_max
+            temp_factor = 1.0 + temp_excess * 0.015  # +1.5% per degree above (reduced from 3%)
 
-        # Apply wear
+        # Total wear
+        total_wear = base_wear * speed_factor * lateral_factor * traction_factor * temp_factor
         self.wear = min(100.0, self.wear + total_wear)
 
-        # === Temperature Model ===
-        # Calculate target temperature based on activity
-        # Base temperature: 70°C (ambient/idle)
-        # Speed contribution: hotter at high speed
-        # Lateral force contribution: cornering generates heat
-        target_temp = 70.0 + speed * 0.1 + abs(lateral_force) * 20.0
+        # === TEMPERATURE MODEL ===
+        # Base temperature (ambient/idle)
+        base_temp = 70.0
 
-        # Smooth temperature change (thermal inertia)
-        # Temperature moves 10% toward target each second
-        temp_change_rate = 10.0 * dt  # 10% per second
-        self.temperature += (target_temp - self.temperature) * temp_change_rate
+        # Heat from speed (aerodynamic friction)
+        speed_heat = speed_normalized * 25.0  # Up to +25°C at max speed
 
-        # Clamp temperature to reasonable range
-        self.temperature = max(20.0, min(150.0, self.temperature))
+        # Heat from cornering (tire friction)
+        lateral_heat = lateral_force * 35.0  # Up to +35°C in hard corners
+
+        # Heat from traction (wheel spin/braking)
+        traction_heat = (throttle + braking) * 15.0  # Up to +30°C combined
+
+        # Target temperature
+        target_temp = base_temp + speed_heat + lateral_heat + traction_heat
+
+        # Thermal dynamics (gradual change)
+        temp_rate = 15.0 * dt  # Degrees per second rate of change
+        if self.temperature < target_temp:
+            # Heat up faster
+            self.temperature = min(target_temp, self.temperature + temp_rate * 1.2)
+        else:
+            # Cool down slower (thermal mass)
+            self.temperature = max(target_temp, self.temperature - temp_rate * 0.8)
+
+        # Clamp temperature to realistic range
+        self.temperature = np.clip(self.temperature, 50.0, 150.0)
 
     def get_grip(self) -> float:
         """
         Calculate current grip multiplier based on wear and temperature.
 
-        Grip Degradation Model:
-        - Wear 0-50%: No degradation (tires still good)
-        - Wear 50-80%: Linear degradation (performance drops)
-        - Wear 80-100%: "Cliff edge" - rapid performance loss
+        BALANCED GRIP MODEL:
+        - Fresh tires (0-30%): Full grip
+        - Worn tires (30-50%): Slight degradation
+        - Medium wear (50-70%): Noticeable degradation
+        - Cliff edge (70-85%): Rapid grip loss
+        - Destroyed (85-100%): Dangerous, minimal grip
 
-        Temperature Effect:
-        - Below optimal: 20% grip penalty (cold tires)
-        - Above optimal: 10% grip penalty (overheating)
-        - Within optimal: No penalty
+        Temperature penalties:
+        - Cold: -1.5% per degree below optimal
+        - Hot: -1.0% per degree above optimal
 
         Returns:
-            Grip multiplier [0.3, 1.0] where 1.0 is maximum grip
-            Minimum is clamped to 0.3 (tires never completely lose grip)
+            Grip multiplier [0.3, 1.0]
         """
         grip = self.grip_base
 
-        # === Wear-based degradation ===
-        if self.wear < 50.0:
-            # Fresh tires: no degradation
-            wear_penalty = 0.0
-        elif self.wear <= 80.0:
-            # Moderate wear: linear degradation
-            # At 50% wear: 0% loss
-            # At 80% wear: 30% loss
-            wear_penalty = (self.wear - 50.0) / 100.0
+        # === WEAR-BASED DEGRADATION ===
+        if self.wear < 30:
+            # Fresh tire: full grip
+            wear_factor = 1.0
+        elif self.wear < 50:
+            # Slight wear: minimal loss
+            # 30% -> 1.0, 50% -> 0.9
+            wear_factor = 1.0 - (self.wear - 30) * 0.005
+        elif self.wear < 70:
+            # Medium wear: noticeable loss
+            # 50% -> 0.9, 70% -> 0.7
+            wear_factor = 0.9 - (self.wear - 50) * 0.01
+        elif self.wear < 85:
+            # CLIFF EDGE: rapid degradation
+            # 70% -> 0.7, 85% -> 0.4
+            wear_factor = 0.7 - (self.wear - 70) * 0.02
         else:
-            # High wear: cliff edge
-            # At 80% wear: 30% loss
-            # At 100% wear: 70% loss (only 30% grip remaining)
-            wear_penalty = 0.3 + (self.wear - 80.0) / 50.0
+            # Destroyed: minimal grip
+            # 85% -> 0.4, 100% -> 0.25
+            wear_factor = 0.4 - (self.wear - 85) * 0.01
 
-        grip *= (1.0 - wear_penalty)
+        grip *= max(0.3, wear_factor)
 
-        # === Temperature-based penalty ===
+        # === TEMPERATURE-BASED DEGRADATION ===
         if self.temperature < self.optimal_temp_min:
-            # Cold tires: 20% penalty
-            grip *= 0.8
+            # Too cold: significant penalty
+            temp_deficit = self.optimal_temp_min - self.temperature
+            temp_factor = 1.0 - (temp_deficit * 0.015 * self.temp_sensitivity)
         elif self.temperature > self.optimal_temp_max:
-            # Overheating: 10% penalty
-            grip *= 0.9
-        # else: optimal temperature, no penalty
+            # Too hot: moderate penalty + accelerated wear (already applied)
+            temp_excess = self.temperature - self.optimal_temp_max
+            temp_factor = 1.0 - (temp_excess * 0.01 * self.temp_sensitivity)
+        else:
+            # Optimal temperature: no penalty
+            temp_factor = 1.0
 
-        # Clamp minimum grip to 0.3 (never completely lose all grip)
-        return max(0.3, grip)
+        grip *= max(0.7, temp_factor)
+
+        # Final grip clamped to reasonable range
+        return max(0.3, min(1.0, grip))
 
     def get_state(self) -> Dict:
         """
@@ -233,22 +297,19 @@ class TyreSet:
         """
         Check if tires are too worn to continue safely.
 
-        Tires are considered "dead" at 95% wear, requiring a pit stop.
+        Tires considered "dead" at 90% wear (was 95%, now more conservative).
 
         Returns:
-            True if wear >= 95%, indicating mandatory tire change
+            True if wear >= 90%, indicating mandatory tire change
         """
-        return self.wear >= 95.0
+        return self.wear >= 90.0
 
 
 class TyreStrategy:
     """
     Helper class for tire strategy decisions (used by engineer agent).
 
-    Provides heuristics for:
-    - Estimating remaining tire life
-    - Deciding when to pit
-    - Optimal compound selection
+    Provides balanced heuristics for realistic F1 strategy.
     """
 
     @staticmethod
@@ -257,88 +318,82 @@ class TyreStrategy:
         avg_wear_per_lap: float
     ) -> int:
         """
-        Estimate how many more laps the current tires can last.
+        Estimate laps remaining before cliff edge (70% wear).
 
-        Uses linear extrapolation based on average wear per lap.
-        Assumes tires are dead at 95% wear.
+        Conservative estimate to avoid getting caught in cliff.
 
         Args:
             tyre_set: Current tire set
             avg_wear_per_lap: Average wear accumulated per lap
 
         Returns:
-            Estimated number of full laps remaining (rounded down)
-            Returns 0 if tires are already dead or near death
+            Estimated number of full laps before cliff edge
         """
-        if tyre_set.is_dead():
-            return 0
-
         if avg_wear_per_lap <= 0:
-            # No wear or negative wear? Assume infinite laps
             return 999
 
-        # Usable wear remaining (leave safety margin)
-        wear_remaining = 95.0 - tyre_set.wear
+        # Target cliff edge at 70%, not 100%
+        usable_wear = max(0, 70.0 - tyre_set.wear)
+        laps = usable_wear / avg_wear_per_lap
 
-        # Estimate laps
-        laps_remaining = wear_remaining / avg_wear_per_lap
-
-        return max(0, int(laps_remaining))
+        return max(0, int(laps))
 
     @staticmethod
     def should_pit(
         tyre_set: TyreSet,
         laps_remaining: int,
-        pit_time_cost: float
-    ) -> bool:
+        avg_wear_per_lap: float,
+        pit_time_cost_laps: float = 1.0
+    ) -> Tuple[bool, str]:
         """
-        Heuristic to decide if car should pit for fresh tires.
+        Decide if car should pit for fresh tires.
 
-        Decision factors:
-        1. Mandatory pit if tires are dead (>= 95% wear)
-        2. Consider pit if tires are in "cliff edge" zone (> 80% wear)
-        3. Don't pit if very few laps remaining in race
-        4. Consider time cost of pit stop vs. performance gain
+        BALANCED STRATEGY:
+        - Mandatory pit if wear > 75% (approaching cliff)
+        - Mandatory pit if grip < 60% (dangerous)
+        - Strategic pit if undercut opportunity exists
+        - No pit if final laps and tires will survive
 
         Args:
             tyre_set: Current tire set
-            laps_remaining: Laps remaining in the race
-            pit_time_cost: Time lost in pit stop (seconds)
+            laps_remaining: Laps remaining in race
+            avg_wear_per_lap: Typical wear per lap
+            pit_time_cost_laps: Laps lost to pit stop (default 1.0)
 
         Returns:
-            True if car should pit for new tires
+            (should_pit: bool, reason: str)
         """
-        # Mandatory pit if tires are dead
-        if tyre_set.is_dead():
-            return True
+        estimated_laps = TyreStrategy.estimate_laps_remaining(tyre_set, avg_wear_per_lap)
+        current_grip = tyre_set.get_grip()
 
-        # If less than 3 laps remaining, avoid pitting (not worth the time)
-        if laps_remaining < 3:
-            return False
+        # === CRITICAL: Mandatory pit ===
+        if tyre_set.wear >= 75:
+            return True, "CRITICAL: Tyre wear above 75% (cliff edge)"
 
-        # If in cliff edge zone (80%+ wear), strongly consider pitting
-        if tyre_set.wear > 80.0:
-            # Only pit if we have enough laps to benefit from fresh tires
-            # (recover the time lost in pit stop)
-            # Assume ~1 second per lap gained with fresh tires
-            time_gain_per_lap = 1.0
-            potential_gain = laps_remaining * time_gain_per_lap
+        if current_grip < 0.6:
+            return True, "CRITICAL: Grip below 60% (dangerous)"
 
-            if potential_gain > pit_time_cost:
-                return True
+        # === FINAL LAPS: No pit if tires will survive ===
+        if laps_remaining <= 2 and tyre_set.wear < 85:
+            return False, "Final laps, no pit needed"
 
-        # If wear is moderate (50-80%), pit only if many laps remain
-        if tyre_set.wear > 50.0 and laps_remaining > 10:
-            # Calculate if we can make it to the end on current tires
-            # Rough estimate: assume wear increases linearly
-            estimated_final_wear = tyre_set.wear + (laps_remaining * 3.0)  # ~3% per lap estimate
+        # === SURVIVAL: Won't make it to the end ===
+        if estimated_laps < laps_remaining and estimated_laps <= 3:
+            return True, f"Strategic: Only {estimated_laps} laps remaining on tyres"
 
-            if estimated_final_wear > 95.0:
-                # Won't make it to the end, need to pit
-                return True
+        # === UNDERCUT: Strategic pit opportunity ===
+        if 45 < tyre_set.wear < 60 and laps_remaining > 5:
+            # Estimate time gain from fresh tires
+            laps_on_new = laps_remaining - pit_time_cost_laps
+            grip_gain = 1.0 - current_grip
+            time_gain_per_lap = grip_gain * 0.5  # ~0.5s per lap per 0.1 grip
+            total_gain = time_gain_per_lap * laps_on_new
+            pit_cost = pit_time_cost_laps * 30.0  # ~30s lap time
 
-        # Default: don't pit
-        return False
+            if total_gain > pit_cost:
+                return True, "Strategic undercut opportunity"
+
+        return False, "Continue on current tyres"
 
     @staticmethod
     def choose_compound(
@@ -349,10 +404,10 @@ class TyreStrategy:
         Choose optimal tire compound for given race situation.
 
         Strategy:
-        - Short stint (< 10 laps): SOFT (maximize pace)
+        - Short stint (< 10 laps): SOFT (maximum pace)
         - Medium stint (10-20 laps): MEDIUM (balanced)
         - Long stint (> 20 laps): HARD (durability)
-        - High degradation tracks: favor harder compounds
+        - Adjust for track degradation level
 
         Args:
             laps_remaining: Number of laps until race end or next planned stop

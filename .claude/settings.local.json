@@ -9,7 +9,8 @@
       "Bash(tree:*)",
       "Bash(python main.py:*)",
       "Bash(python:*)",
-      "Bash(pytest:*)"
+      "Bash(pytest:*)",
+      "Bash(cat:*)"
     ]
   }
 }

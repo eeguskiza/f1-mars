@@ -17,10 +17,10 @@ class TestRotatePoint:
     def test_rotate_90_degrees(self):
         """Test rotating a point 90 degrees."""
         point = (1.0, 0.0)
-        center = (0.0, 0.0)
+        origin = (0.0, 0.0)
         angle = np.pi / 2  # 90 degrees
 
-        result = rotate_point(point, center, angle)
+        result = rotate_point(point, angle, origin)
 
         # Should be approximately (0, 1)
         assert abs(result[0]) < 1e-10
@@ -29,10 +29,10 @@ class TestRotatePoint:
     def test_rotate_180_degrees(self):
         """Test rotating a point 180 degrees."""
         point = (1.0, 0.0)
-        center = (0.0, 0.0)
+        origin = (0.0, 0.0)
         angle = np.pi  # 180 degrees
 
-        result = rotate_point(point, center, angle)
+        result = rotate_point(point, angle, origin)
 
         # Should be approximately (-1, 0)
         assert abs(result[0] + 1.0) < 1e-10
@@ -41,10 +41,10 @@ class TestRotatePoint:
     def test_rotate_around_offset_center(self):
         """Test rotating around a non-origin center."""
         point = (2.0, 1.0)
-        center = (1.0, 1.0)
+        origin = (1.0, 1.0)
         angle = np.pi / 2
 
-        result = rotate_point(point, center, angle)
+        result = rotate_point(point, angle, origin)
 
         # Point should rotate around (1, 1)
         assert abs(result[0] - 1.0) < 1e-10
@@ -88,7 +88,7 @@ class TestLineSegmentDistance:
         segment_start = np.array([0.0, 0.0])
         segment_end = np.array([2.0, 0.0])
 
-        dist, _, _ = line_segment_distance(point, segment_start, segment_end)
+        dist, closest = line_segment_distance(point, segment_start, segment_end)
 
         assert abs(dist - 1.0) < 1e-10
 
@@ -98,7 +98,7 @@ class TestLineSegmentDistance:
         segment_start = np.array([0.0, 0.0])
         segment_end = np.array([2.0, 0.0])
 
-        dist, _, _ = line_segment_distance(point, segment_start, segment_end)
+        dist, closest = line_segment_distance(point, segment_start, segment_end)
 
         # Distance to (2, 0)
         expected = np.sqrt((3.0 - 2.0)**2 + (1.0 - 0.0)**2)

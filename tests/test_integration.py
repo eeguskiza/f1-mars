@@ -1,28 +1,8 @@
 #!/usr/bin/env python3
 """Quick test of balanced physics."""
 
-import sys
 import numpy as np
-from pathlib import Path
-import importlib.util
-
-# Load modules directly
-def load_module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-base_path = Path(__file__).parent / 'f1_mars'
-car_module = load_module('car', base_path / 'envs' / 'car.py')
-track_module = load_module('track', base_path / 'envs' / 'track.py')
-tyres_module = load_module('tyres', base_path / 'envs' / 'tyres.py')
-
-Car = car_module.Car
-Track = track_module.Track
-TrackGenerator = track_module.TrackGenerator
-TyreSet = tyres_module.TyreSet
-TyreCompound = tyres_module.TyreCompound
+from f1_mars.envs import Car, Track, TrackGenerator, TyreSet, TyreCompound
 
 print("=" * 60)
 print("  QUICK PHYSICS BALANCE TEST")

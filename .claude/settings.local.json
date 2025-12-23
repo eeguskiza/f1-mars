@@ -5,7 +5,11 @@
       "Bash(python3:*)",
       "Bash(timeout 30 python3:*)",
       "Bash(timeout 25 python3:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(tree:*)",
+      "Bash(python main.py:*)",
+      "Bash(python:*)",
+      "Bash(pytest:*)"
     ]
   }
 }

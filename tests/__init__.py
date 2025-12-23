@@ -1,1 +1,1 @@
-"""Tests for F1 Mars simulator."""
+"""F1-MARS Test Suite."""

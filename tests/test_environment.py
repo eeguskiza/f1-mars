@@ -1,22 +1,8 @@
 #!/usr/bin/env python3
 """Test the F1 Gymnasium environment."""
 
-import sys
 import numpy as np
-from pathlib import Path
-import importlib.util
-
-# Load modules directly
-def load_module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-base_path = Path(__file__).parent / 'f1_mars'
-env_module = load_module('f1_env', base_path / 'envs' / 'f1_env.py')
-
-F1Env = env_module.F1Env
+from f1_mars.envs import F1Env
 
 print("=" * 70)
 print("  F1 GYMNASIUM ENVIRONMENT TEST")

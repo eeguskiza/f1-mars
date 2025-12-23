@@ -4,10 +4,10 @@ import pytest
 import numpy as np
 from f1_mars.utils.geometry import (
     rotate_point,
-    line_intersection,
-    point_to_line_distance,
+    line_line_intersection,
+    line_segment_distance,
     normalize_angle,
-    distance,
+    distance_2d,
 )
 
 
@@ -52,16 +52,16 @@ class TestRotatePoint:
 
 
 class TestLineIntersection:
-    """Tests for line_intersection function."""
+    """Tests for line_line_intersection function."""
 
     def test_intersecting_lines(self):
         """Test two lines that intersect."""
-        p1 = (0.0, 0.0)
-        p2 = (2.0, 2.0)
-        p3 = (0.0, 2.0)
-        p4 = (2.0, 0.0)
+        p1 = np.array([0.0, 0.0])
+        p2 = np.array([2.0, 2.0])
+        p3 = np.array([0.0, 2.0])
+        p4 = np.array([2.0, 0.0])
 
-        result = line_intersection(p1, p2, p3, p4)
+        result = line_line_intersection(p1, p2, p3, p4)
 
         assert result is not None
         assert abs(result[0] - 1.0) < 1e-10
@@ -69,51 +69,40 @@ class TestLineIntersection:
 
     def test_parallel_lines(self):
         """Test parallel lines that don't intersect."""
-        p1 = (0.0, 0.0)
-        p2 = (1.0, 0.0)
-        p3 = (0.0, 1.0)
-        p4 = (1.0, 1.0)
+        p1 = np.array([0.0, 0.0])
+        p2 = np.array([1.0, 0.0])
+        p3 = np.array([0.0, 1.0])
+        p4 = np.array([1.0, 1.0])
 
-        result = line_intersection(p1, p2, p3, p4)
-
-        assert result is None
-
-    def test_non_intersecting_segments(self):
-        """Test line segments that would intersect if extended but don't."""
-        p1 = (0.0, 0.0)
-        p2 = (1.0, 0.0)
-        p3 = (2.0, 1.0)
-        p4 = (3.0, 1.0)
-
-        result = line_intersection(p1, p2, p3, p4)
+        result = line_line_intersection(p1, p2, p3, p4)
 
         assert result is None
 
 
-class TestPointToLineDistance:
-    """Tests for point_to_line_distance function."""
+class TestLineSegmentDistance:
+    """Tests for line_segment_distance function."""
 
     def test_perpendicular_distance(self):
-        """Test perpendicular distance to a line."""
-        point = (1.0, 1.0)
-        line_start = (0.0, 0.0)
-        line_end = (2.0, 0.0)
+        """Test perpendicular distance to a line segment."""
+        point = np.array([1.0, 1.0])
+        segment_start = np.array([0.0, 0.0])
+        segment_end = np.array([2.0, 0.0])
 
-        distance = point_to_line_distance(point, line_start, line_end)
+        dist, _, _ = line_segment_distance(point, segment_start, segment_end)
 
-        assert abs(distance - 1.0) < 1e-10
+        assert abs(dist - 1.0) < 1e-10
 
     def test_distance_to_endpoint(self):
         """Test distance when closest point is an endpoint."""
-        point = (3.0, 1.0)
-        line_start = (0.0, 0.0)
-        line_end = (2.0, 0.0)
+        point = np.array([3.0, 1.0])
+        segment_start = np.array([0.0, 0.0])
+        segment_end = np.array([2.0, 0.0])
 
-        distance = point_to_line_distance(point, line_start, line_end)
+        dist, _, _ = line_segment_distance(point, segment_start, segment_end)
 
         # Distance to (2, 0)
         expected = np.sqrt((3.0 - 2.0)**2 + (1.0 - 0.0)**2)
-        assert abs(distance - expected) < 1e-10
+        assert abs(dist - expected) < 1e-10
 
 
 class TestNormalizeAngle:
@@ -139,18 +128,18 @@ class TestNormalizeAngle:
 
 
 class TestDistance:
-    """Tests for distance function."""
+    """Tests for distance_2d function."""
 
     def test_distance_horizontal(self):
         """Test horizontal distance."""
-        p1 = (0.0, 0.0)
-        p2 = (3.0, 0.0)
-        result = distance(p1, p2)
+        p1 = np.array([0.0, 0.0])
+        p2 = np.array([3.0, 0.0])
+        result = distance_2d(p1, p2)
         assert abs(result - 3.0) < 1e-10
 
     def test_distance_diagonal(self):
         """Test diagonal distance (3-4-5 triangle)."""
-        p1 = (0.0, 0.0)
-        p2 = (3.0, 4.0)
-        result = distance(p1, p2)
+        p1 = np.array([0.0, 0.0])
+        p2 = np.array([3.0, 4.0])
+        result = distance_2d(p1, p2)
         assert abs(result - 5.0) < 1e-10

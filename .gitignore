@@ -75,14 +75,18 @@ venv.bak/
 .DS_Store
 
 # Trained models (too large for git)
-trained_models/*.zip
-trained_models/*.pkl
+trained_models/*
+!trained_models/.gitkeep
 
 # Logs
-logs/*.tfevents.*
-logs/*/
+logs/*
+!logs/.gitkeep
 
 # Temporary files
 *.tmp
 *.bak
 *.log
+
+# PyGame recordings (if any)
+*.avi
+*.mp4

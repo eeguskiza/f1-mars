@@ -17,31 +17,42 @@ A 2D Formula 1 racing simulator built with Gymnasium and PyGame, featuring dual 
 
 ```
 f1_mars/
-├── f1_mars/                    # Main package
-│   ├── envs/                   # Gymnasium environment
-│   │   ├── f1_env.py          # Main environment
-│   │   ├── car.py             # Car physics model
-│   │   ├── track.py           # Track system
-│   │   └── tyres.py           # Tire degradation system
-│   ├── rendering/              # Visualization
-│   │   ├── renderer.py        # PyGame renderer
-│   │   ├── hud.py             # UI overlay
-│   │   └── assets/            # Sprites and graphics
-│   ├── agents/                 # RL agent wrappers
+├── f1_mars/                      # Main package
+│   ├── envs/                     # Gymnasium environment ✅
+│   │   ├── f1_env.py            # Main environment (BALANCED)
+│   │   ├── car.py               # Car physics (bicycle model)
+│   │   ├── track.py             # Track system (splines)
+│   │   └── tyres.py             # Tyre degradation (strategic)
+│   ├── rendering/                # Visualization (WIP)
+│   │   ├── renderer.py          # PyGame renderer
+│   │   ├── hud.py               # UI overlay
+│   │   └── assets/              # Sprites and graphics
+│   ├── agents/                   # RL agent wrappers (WIP)
 │   │   ├── pilot_agent.py
 │   │   └── engineer_agent.py
-│   └── utils/                  # Utilities
-│       ├── config.py          # Global constants
-│       └── geometry.py        # Geometric helpers
-├── tracks/                     # Track definitions (JSON)
-├── trained_models/             # Saved RL models
-├── logs/                       # TensorBoard logs
-├── scripts/                    # Training and evaluation
-│   ├── train_pilot.py
-│   ├── train_engineer.py
-│   ├── evaluate.py
-│   └── play_human.py
-└── tests/                      # Unit tests
+│   └── utils/                    # Utilities ✅
+│       ├── config.py            # Global constants
+│       └── geometry.py          # Geometric helpers (raycast, etc.)
+├── scripts/                      # Executable scripts ✅
+│   ├── demo_physics.py          # Physics demonstration
+│   └── example_random_agent.py  # Random agent example
+├── tests/                        # Test suite ✅
+│   ├── conftest.py              # Pytest fixtures
+│   ├── test_environment.py      # F1Env tests
+│   ├── test_tyres.py            # Tyre physics tests
+│   ├── test_tyres_extended.py   # Extended tyre validation
+│   ├── test_integration.py      # Integration tests
+│   └── test_verification.py     # Quick verification
+├── docs/                         # Documentation ✅
+│   ├── IMPLEMENTATION_STATUS.md # Implementation summary
+│   └── TYRE_WEAR_FIX_SUMMARY.md # Tyre wear fix details
+├── tracks/                       # Track definitions (JSON) ✅
+├── trained_models/               # Saved RL models (empty)
+├── logs/                         # TensorBoard logs (empty)
+├── main.py                       # Entry point ✅
+├── setup.py                      # Package configuration
+├── requirements.txt              # Dependencies
+└── README.md                     # This file
 ```
 
 ## Installation
@@ -62,34 +73,55 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
-### Train the Pilot Agent
+### Run Physics Demo
 
 ```bash
-python scripts/train_pilot.py --track monaco --episodes 10000
+python main.py demo
 ```
 
-### Train the Engineer Agent
+This demonstrates all physics components working together:
+- Car physics with balanced parameters
+- Tyre degradation and temperature
+- LIDAR sensors
+- Track boundaries
+
+### Run Random Agent Example
 
 ```bash
-python scripts/train_engineer.py --track spa --episodes 5000
+python main.py random
 ```
 
-### Evaluate Trained Models
+Shows a simple LIDAR-based policy driving in the environment.
+
+### Run Test Suite
 
 ```bash
-python scripts/evaluate.py --pilot-model trained_models/pilot_best.zip
+python main.py test
 ```
 
-### Play Manually
+Or directly with pytest:
 
 ```bash
-python scripts/play_human.py --track silverstone
+pytest tests/ -v
 ```
 
-Controls:
-- Arrow Keys: Steer and accelerate/brake
-- Space: Pit stop
-- ESC: Quit
+### Use as Gymnasium Environment
+
+```python
+from f1_mars.envs import F1Env
+
+env = F1Env(max_laps=3)
+obs, info = env.reset()
+
+for _ in range(1000):
+    action = env.action_space.sample()  # [steering, throttle, brake]
+    obs, reward, terminated, truncated, info = env.step(action)
+
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
 
 ## Configuration
 
@@ -120,30 +152,44 @@ Tracks are defined as JSON files in the `tracks/` directory:
 
 ## Environment Details
 
-### Observation Space
+### Observation Space (26 dimensions)
 
-- LIDAR distance sensors (16 rays)
-- Current speed and steering angle
-- Tire condition (4 values)
-- Fuel level
-- Distance to next checkpoint
-- Lap progress
+1. Velocity (normalized)
+2. Steering angle (normalized)
+3. Heading relative to track
+4. Lateral offset from centerline
+5-15. **LIDAR rays** (11 rays from -75° to +75°)
+16-20. Track curvature ahead (5 points)
+21. Tyre wear (%)
+22. Current grip multiplier
+23. Engineer signal (0=continue, 1=pit, 2=change)
+24. Current lap (normalized)
+25. Total laps (normalized)
+26. Distance along track (normalized)
 
 ### Action Space
 
 **Pilot Agent:**
-- Continuous: [steering, throttle, brake]
+- `Box([-1, 0, 0], [1, 1, 1])`
+- [steering, throttle, brake]
+- Steering: -1 (left) to +1 (right)
+- Throttle: 0 to 1
+- Brake: 0 to 1
 
-**Engineer Agent:**
-- Discrete: [continue, pit_soft, pit_medium, pit_hard]
+**Engineer Agent (via signal):**
+- 0 = Continue on current tyres
+- 1 = Pit stop required
+- 2 = Change compound
 
-### Rewards
+### Rewards (Balanced for RL)
 
-- Checkpoint passed: +100
-- Lap completed: +1000
-- Collision: -100
-- Reverse driving: -10
-- Speed bonus: +0.1 per unit of speed
+- **Progress**: +0.1 per meter forward, -0.2 per meter backward
+- **Checkpoint**: +10 per checkpoint
+- **Lap completion**: +100 + time bonus
+- **Off-track**: -5 per timestep
+- **Low speed**: -0.5 if velocity < 10 m/s
+- **High wear**: -0.1 if wear > 80%
+- **Dead tyres**: -50
 
 ## Dependencies
 

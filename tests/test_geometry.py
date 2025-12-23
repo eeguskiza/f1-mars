@@ -1,0 +1,156 @@
+"""Tests for geometry utility functions."""
+
+import pytest
+import numpy as np
+from f1_mars.utils.geometry import (
+    rotate_point,
+    line_intersection,
+    point_to_line_distance,
+    normalize_angle,
+    distance,
+)
+
+
+class TestRotatePoint:
+    """Tests for rotate_point function."""
+
+    def test_rotate_90_degrees(self):
+        """Test rotating a point 90 degrees."""
+        point = (1.0, 0.0)
+        center = (0.0, 0.0)
+        angle = np.pi / 2  # 90 degrees
+
+        result = rotate_point(point, center, angle)
+
+        # Should be approximately (0, 1)
+        assert abs(result[0]) < 1e-10
+        assert abs(result[1] - 1.0) < 1e-10
+
+    def test_rotate_180_degrees(self):
+        """Test rotating a point 180 degrees."""
+        point = (1.0, 0.0)
+        center = (0.0, 0.0)
+        angle = np.pi  # 180 degrees
+
+        result = rotate_point(point, center, angle)
+
+        # Should be approximately (-1, 0)
+        assert abs(result[0] + 1.0) < 1e-10
+        assert abs(result[1]) < 1e-10
+
+    def test_rotate_around_offset_center(self):
+        """Test rotating around a non-origin center."""
+        point = (2.0, 1.0)
+        center = (1.0, 1.0)
+        angle = np.pi / 2
+
+        result = rotate_point(point, center, angle)
+
+        # Point should rotate around (1, 1)
+        assert abs(result[0] - 1.0) < 1e-10
+        assert abs(result[1] - 2.0) < 1e-10
+
+
+class TestLineIntersection:
+    """Tests for line_intersection function."""
+
+    def test_intersecting_lines(self):
+        """Test two lines that intersect."""
+        p1 = (0.0, 0.0)
+        p2 = (2.0, 2.0)
+        p3 = (0.0, 2.0)
+        p4 = (2.0, 0.0)
+
+        result = line_intersection(p1, p2, p3, p4)
+
+        assert result is not None
+        assert abs(result[0] - 1.0) < 1e-10
+        assert abs(result[1] - 1.0) < 1e-10
+
+    def test_parallel_lines(self):
+        """Test parallel lines that don't intersect."""
+        p1 = (0.0, 0.0)
+        p2 = (1.0, 0.0)
+        p3 = (0.0, 1.0)
+        p4 = (1.0, 1.0)
+
+        result = line_intersection(p1, p2, p3, p4)
+
+        assert result is None
+
+    def test_non_intersecting_segments(self):
+        """Test line segments that would intersect if extended but don't."""
+        p1 = (0.0, 0.0)
+        p2 = (1.0, 0.0)
+        p3 = (2.0, 1.0)
+        p4 = (3.0, 1.0)
+
+        result = line_intersection(p1, p2, p3, p4)
+
+        assert result is None
+
+
+class TestPointToLineDistance:
+    """Tests for point_to_line_distance function."""
+
+    def test_perpendicular_distance(self):
+        """Test perpendicular distance to a line."""
+        point = (1.0, 1.0)
+        line_start = (0.0, 0.0)
+        line_end = (2.0, 0.0)
+
+        distance = point_to_line_distance(point, line_start, line_end)
+
+        assert abs(distance - 1.0) < 1e-10
+
+    def test_distance_to_endpoint(self):
+        """Test distance when closest point is an endpoint."""
+        point = (3.0, 1.0)
+        line_start = (0.0, 0.0)
+        line_end = (2.0, 0.0)
+
+        distance = point_to_line_distance(point, line_start, line_end)
+
+        # Distance to (2, 0)
+        expected = np.sqrt((3.0 - 2.0)**2 + (1.0 - 0.0)**2)
+        assert abs(distance - expected) < 1e-10
+
+
+class TestNormalizeAngle:
+    """Tests for normalize_angle function."""
+
+    def test_angle_within_range(self):
+        """Test angle already in range."""
+        angle = np.pi / 2
+        result = normalize_angle(angle)
+        assert abs(result - angle) < 1e-10
+
+    def test_angle_above_range(self):
+        """Test angle above pi."""
+        angle = 2 * np.pi + 0.5
+        result = normalize_angle(angle)
+        assert abs(result - 0.5) < 1e-10
+
+    def test_angle_below_range(self):
+        """Test angle below -pi."""
+        angle = -2 * np.pi - 0.5
+        result = normalize_angle(angle)
+        assert abs(result + 0.5) < 1e-10
+
+
+class TestDistance:
+    """Tests for distance function."""
+
+    def test_distance_horizontal(self):
+        """Test horizontal distance."""
+        p1 = (0.0, 0.0)
+        p2 = (3.0, 0.0)
+        result = distance(p1, p2)
+        assert abs(result - 3.0) < 1e-10
+
+    def test_distance_diagonal(self):
+        """Test diagonal distance (3-4-5 triangle)."""
+        p1 = (0.0, 0.0)
+        p2 = (3.0, 4.0)
+        result = distance(p1, p2)
+        assert abs(result - 5.0) < 1e-10

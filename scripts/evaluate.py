@@ -38,7 +38,8 @@ class Evaluator:
         self,
         model_path: str,
         track_path: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
+        device: str = "cpu"
     ):
         """
         Initialize evaluator.
@@ -47,10 +48,12 @@ class Evaluator:
             model_path: Path to trained model (.zip file)
             track_path: Path to track JSON (None for default)
             config: Optional configuration dict
+            device: Device to use ('cpu', 'cuda', or 'auto')
         """
         self.model_path = model_path
         self.track_path = track_path
         self.config = config or {}
+        self.device = device
 
         # Load model and create environment
         print(f"\nLoading model from: {model_path}")
@@ -85,20 +88,20 @@ class Evaluator:
 
         try:
             if 'PPO' in model_name:
-                return PPO.load(model_path)
+                return PPO.load(model_path, device=self.device)
             elif 'SAC' in model_name:
-                return SAC.load(model_path)
+                return SAC.load(model_path, device=self.device)
             elif 'TD3' in model_name:
-                return TD3.load(model_path)
+                return TD3.load(model_path, device=self.device)
             else:
                 # Try PPO first (most common)
                 try:
-                    return PPO.load(model_path)
+                    return PPO.load(model_path, device=self.device)
                 except:
                     try:
-                        return SAC.load(model_path)
+                        return SAC.load(model_path, device=self.device)
                     except:
-                        return TD3.load(model_path)
+                        return TD3.load(model_path, device=self.device)
         except Exception as e:
             raise ValueError(f"Failed to load model: {e}")
 
@@ -538,7 +541,7 @@ class Evaluator:
 
         # Create evaluator for second model
         print(f"\n📊 Model 2: {Path(other_model_path).stem}")
-        evaluator_2 = Evaluator(other_model_path, self.track_path, self.config)
+        evaluator_2 = Evaluator(other_model_path, self.track_path, self.config, self.device)
         results_2 = evaluator_2.run_evaluation(n_episodes, deterministic, verbose=False)
         evaluator_2._print_summary(results_2)
 
@@ -714,6 +717,15 @@ def main():
         help="Path to second model for comparison"
     )
 
+    # Device settings
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cpu",
+        choices=["auto", "cuda", "cpu"],
+        help="Device to use (CPU recommended for MlpPolicy)"
+    )
+
     args = parser.parse_args()
 
     # Validate model path
@@ -727,7 +739,7 @@ def main():
     }
 
     # Create evaluator
-    evaluator = Evaluator(args.model, args.track, config)
+    evaluator = Evaluator(args.model, args.track, config, device=args.device)
 
     try:
         # Run comparison if specified

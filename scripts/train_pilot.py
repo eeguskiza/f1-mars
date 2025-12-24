@@ -53,6 +53,94 @@ class VerboseEvalCallback(BaseCallback):
         return True
 
 
+class TrainingProgressCallback(BaseCallback):
+    """
+    Callback that prints training progress with detailed metrics.
+    Shows stats every N steps to keep user informed.
+    """
+
+    def __init__(self, print_freq: int = 10000, verbose: int = 1):
+        super().__init__(verbose)
+        self.print_freq = print_freq
+        self.episode_rewards = []
+        self.episode_lengths = []
+        self.episode_laps = []
+        self.episode_off_track_count = []
+        self.last_print_step = 0
+        self.start_time = None
+
+    def _on_training_start(self) -> None:
+        """Called at the start of training."""
+        self.start_time = time.time()
+
+    def _on_step(self) -> bool:
+        """Called at each step."""
+        # Collect episode metrics
+        infos = self.locals.get('infos', [])
+        for info in infos:
+            if 'episode' in info:
+                self.episode_rewards.append(info['episode']['r'])
+                self.episode_lengths.append(info['episode']['l'])
+                self.episode_laps.append(info.get('lap', 0))
+
+                # Count off-track
+                off_track = 0 if info.get('on_track', True) else 1
+                self.episode_off_track_count.append(off_track)
+
+        # Print progress every N steps
+        if self.num_timesteps - self.last_print_step >= self.print_freq:
+            self._print_progress()
+            self.last_print_step = self.num_timesteps
+
+        return True
+
+    def _print_progress(self):
+        """Print training progress."""
+        if len(self.episode_rewards) == 0:
+            return
+
+        # Calculate time stats
+        elapsed = time.time() - self.start_time if self.start_time else 0
+        steps_per_sec = self.num_timesteps / elapsed if elapsed > 0 else 0
+
+        print(f"\n{'─'*70}")
+        print(f"  TRAINING PROGRESS - Step {self.num_timesteps:,}")
+        print(f"{'─'*70}")
+        print(f"  Elapsed time: {elapsed/60:.1f} min  |  Speed: {steps_per_sec:.0f} steps/s")
+
+        # Recent episode stats (last 100 episodes)
+        recent_n = min(100, len(self.episode_rewards))
+        recent_rewards = self.episode_rewards[-recent_n:]
+        recent_laps = self.episode_laps[-recent_n:]
+        recent_lengths = self.episode_lengths[-recent_n:]
+
+        print(f"\n  Last {recent_n} episodes:")
+        print(f"    Avg reward: {np.mean(recent_rewards):.2f} ± {np.std(recent_rewards):.2f}")
+        print(f"    Avg laps: {np.mean(recent_laps):.2f}")
+        print(f"    Avg steps: {np.mean(recent_lengths):.1f}")
+
+        # Completion stats
+        completed = sum(1 for laps in recent_laps if laps > 0)
+        completion_rate = completed / recent_n if recent_n > 0 else 0
+        print(f"    Completion rate: {completion_rate:.1%} ({completed}/{recent_n})")
+
+        # Best stats
+        if len(recent_laps) > 0:
+            best_laps = max(recent_laps)
+            if best_laps > 0:
+                print(f"    Best laps in window: {best_laps}")
+
+        print(f"{'─'*70}\n")
+
+        # Clear old data to save memory (keep last 1000)
+        max_keep = 1000
+        if len(self.episode_rewards) > max_keep:
+            self.episode_rewards = self.episode_rewards[-max_keep:]
+            self.episode_lengths = self.episode_lengths[-max_keep:]
+            self.episode_laps = self.episode_laps[-max_keep:]
+            self.episode_off_track_count = self.episode_off_track_count[-max_keep:]
+
+
 class F1MetricsCallback(BaseCallback):
     """
     Custom callback for logging F1-specific metrics to TensorBoard.
@@ -113,24 +201,39 @@ class F1MetricsCallback(BaseCallback):
         return True
 
     def _log_metrics(self):
-        """Log accumulated metrics to TensorBoard."""
+        """Log accumulated metrics to TensorBoard and console."""
+        has_metrics = False
+
         if len(self.episode_lap_times) > 0:
-            self.logger.record("f1/lap_time_mean", np.mean(self.episode_lap_times))
+            mean_lap = np.mean(self.episode_lap_times)
+            self.logger.record("f1/lap_time_mean", mean_lap)
             self.logger.record("f1/lap_time_best", self.best_lap_time)
-            self.episode_lap_times.clear()
+            has_metrics = True
 
         if len(self.episode_tyre_wear) > 0:
-            self.logger.record("f1/tyre_wear_mean", np.mean(self.episode_tyre_wear))
-            self.episode_tyre_wear.clear()
+            mean_tyre = np.mean(self.episode_tyre_wear)
+            self.logger.record("f1/tyre_wear_mean", mean_tyre)
 
         if len(self.episode_on_track_time) > 0:
-            self.logger.record("f1/on_track_percentage", np.mean(self.episode_on_track_time))
-            self.episode_on_track_time.clear()
+            on_track_pct = np.mean(self.episode_on_track_time)
+            self.logger.record("f1/on_track_percentage", on_track_pct)
 
         if len(self.episode_laps_completed) > 0:
-            self.logger.record("f1/laps_completed_mean", np.mean(self.episode_laps_completed))
+            mean_laps = np.mean(self.episode_laps_completed)
+            self.logger.record("f1/laps_completed_mean", mean_laps)
             self.logger.record("f1/total_laps_completed", self.total_laps_completed)
-            self.episode_laps_completed.clear()
+
+        # Print to console if verbose and we have lap time data
+        if self.verbose > 0 and has_metrics and len(self.episode_lap_times) > 0:
+            print(f"  [F1 Metrics] Best lap: {self.best_lap_time:.2f}s | "
+                  f"Avg lap: {mean_lap:.2f}s | "
+                  f"Total laps: {self.total_laps_completed}")
+
+        # Clear buffers
+        self.episode_lap_times.clear()
+        self.episode_tyre_wear.clear()
+        self.episode_on_track_time.clear()
+        self.episode_laps_completed.clear()
 
 
 def make_env(
@@ -553,27 +656,91 @@ def main():
 
     # Evaluation callback with custom wrapper for progress
     class VerboseEvalWrapper(EvalCallback):
-        """Wrapper that prints when evaluation starts/ends."""
+        """Wrapper that prints detailed metrics during evaluation."""
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.eval_episode_metrics = []
 
         def _on_step(self) -> bool:
             # Check if it's time to evaluate
             if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
-                print(f"\n{'='*50}")
-                print(f"  EVALUATION at step {self.num_timesteps}")
-                print(f"  Running {self.n_eval_episodes} episodes...")
-                print(f"{'='*50}\n")
+                print(f"\n{'='*70}")
+                print(f"  PAUSING TRAINING FOR EVALUATION")
+                print(f"{'='*70}")
+                print(f"  Current timestep: {self.num_timesteps:,}")
+                print(f"  Running {self.n_eval_episodes} evaluation episodes...")
+                print(f"{'='*70}\n")
+                self.eval_episode_metrics = []
+
+            # Store the original callback to track episodes
+            is_eval_time = self.eval_freq > 0 and self.n_calls % self.eval_freq == 0
 
             result = super()._on_step()
 
-            # Print results after evaluation
+            # Capture episode info during evaluation
+            if hasattr(self, '_is_success_buffer') and len(self._is_success_buffer) > 0:
+                # We're in evaluation mode, capture metrics
+                infos = self.locals.get('infos', [])
+                for info in infos:
+                    if 'episode' in info:
+                        # Compile episode metrics
+                        metrics = {
+                            'laps': info.get('lap', 0),
+                            'checkpoints': info.get('checkpoint', 0),
+                            'lap_time': info.get('lap_time', 0),
+                            'on_track': info.get('on_track', True),
+                            'velocity': info.get('velocity', 0),
+                            'episode_reward': info['episode']['r'],
+                            'episode_length': info['episode']['l']
+                        }
+                        self.eval_episode_metrics.append(metrics)
+
+                        # Print individual episode results
+                        episode_num = len(self.eval_episode_metrics)
+                        print(f"  Eval Episode {episode_num}/{self.n_eval_episodes}:")
+
+                        if metrics['laps'] > 0:
+                            print(f"    ✓ Completed {metrics['laps']} lap(s)")
+                            if metrics['lap_time'] > 0:
+                                print(f"    ⏱  Lap time: {metrics['lap_time']:.2f}s")
+                        else:
+                            print(f"    ✗ No laps completed (reached checkpoint {metrics['checkpoints']})")
+
+                        print(f"    Reward: {metrics['episode_reward']:.2f}")
+                        print(f"    Steps: {metrics['episode_length']}")
+
+                        # Check if went off track
+                        if not metrics['on_track']:
+                            print(f"    ⚠ Ended off-track")
+
+                        print()
+
+            # Print summary after all evaluation episodes complete
             if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
-                if len(self.evaluations_results) > 0:
+                if len(self.evaluations_results) > 0 and len(self.eval_episode_metrics) >= self.n_eval_episodes:
                     last_mean = self.last_mean_reward
-                    print(f"\n{'='*50}")
-                    print(f"  EVALUATION COMPLETE")
+
+                    # Calculate aggregate metrics
+                    completed_laps = [m['laps'] for m in self.eval_episode_metrics]
+                    lap_times = [m['lap_time'] for m in self.eval_episode_metrics if m['lap_time'] > 0]
+
+                    print(f"{'='*70}")
+                    print(f"  EVALUATION SUMMARY")
+                    print(f"{'='*70}")
                     print(f"  Mean reward: {last_mean:.2f}")
-                    print(f"  Resuming training...")
-                    print(f"{'='*50}\n")
+                    print(f"  Total laps completed: {sum(completed_laps)}")
+                    print(f"  Avg laps per episode: {np.mean(completed_laps):.2f}")
+
+                    if len(lap_times) > 0:
+                        print(f"  Best lap time: {min(lap_times):.2f}s")
+                        print(f"  Avg lap time: {np.mean(lap_times):.2f}s")
+
+                    completion_rate = sum(1 for l in completed_laps if l > 0) / len(completed_laps)
+                    print(f"  Completion rate: {completion_rate:.1%}")
+                    print(f"{'='*70}")
+                    print(f"  RESUMING TRAINING...")
+                    print(f"{'='*70}\n")
 
             return result
 
@@ -591,9 +758,15 @@ def main():
     # F1 metrics callback
     f1_callback = F1MetricsCallback(verbose=1)
 
+    # Training progress callback
+    progress_callback = TrainingProgressCallback(
+        print_freq=10000,  # Print every 10k steps
+        verbose=1
+    )
+
     # Combine callbacks
-    callback = CallbackList([checkpoint_callback, eval_callback, f1_callback])
-    print("✓ Callbacks configured")
+    callback = CallbackList([checkpoint_callback, eval_callback, f1_callback, progress_callback])
+    print("✓ Callbacks configured (checkpoint, eval, F1 metrics, training progress)")
 
     # Train
     print("\n" + "=" * 70)

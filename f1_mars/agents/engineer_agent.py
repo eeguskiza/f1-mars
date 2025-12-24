@@ -4,6 +4,7 @@ from stable_baselines3 import DQN
 from stable_baselines3.common.callbacks import BaseCallback
 from typing import Optional
 import numpy as np
+import time
 
 
 class EngineerAgent:
@@ -169,22 +170,45 @@ class EngineerAgent:
 
 class EngineerTrainingCallback(BaseCallback):
     """
-    Custom callback for monitoring engineer agent training.
+    Custom callback for monitoring engineer agent training with detailed metrics.
     """
 
-    def __init__(self, save_freq: int, save_path: str, verbose: int = 1):
+    def __init__(
+        self,
+        save_freq: int,
+        save_path: str,
+        print_freq: int = 5000,
+        verbose: int = 1
+    ):
         """
         Initialize callback.
 
         Args:
             save_freq: Save model every N steps
             save_path: Directory to save checkpoints
+            print_freq: Print training stats every N steps
             verbose: Verbosity level
         """
         super().__init__(verbose)
         self.save_freq = save_freq
         self.save_path = save_path
+        self.print_freq = print_freq
         self.best_mean_reward = -np.inf
+
+        # Training metrics tracking
+        self.episode_rewards = []
+        self.episode_lengths = []
+        self.episode_actions = []  # Track strategy decisions
+        self.start_time = None
+        self.last_print_step = 0
+
+    def _on_training_start(self) -> None:
+        """Called at the start of training."""
+        self.start_time = time.time()
+        if self.verbose > 0:
+            print(f"\n{'='*70}")
+            print(f"  STARTING ENGINEER TRAINING")
+            print(f"{'='*70}\n")
 
     def _on_step(self) -> bool:
         """
@@ -193,18 +217,101 @@ class EngineerTrainingCallback(BaseCallback):
         Returns:
             True to continue training
         """
+        # Collect episode metrics
+        infos = self.locals.get('infos', [])
+        for info in infos:
+            if 'episode' in info:
+                self.episode_rewards.append(info['episode']['r'])
+                self.episode_lengths.append(info['episode']['l'])
+
+                # Track actions (strategy decisions)
+                if 'action' in self.locals:
+                    action = self.locals['action']
+                    if isinstance(action, (np.ndarray, list)):
+                        action = action[0] if len(action) > 0 else 0
+                    self.episode_actions.append(int(action))
+
+        # Print progress periodically
+        if self.num_timesteps - self.last_print_step >= self.print_freq:
+            self._print_progress()
+            self.last_print_step = self.num_timesteps
+
         # Save checkpoint periodically
         if self.n_calls % self.save_freq == 0:
             checkpoint_path = f"{self.save_path}/engineer_checkpoint_{self.n_calls}.zip"
             self.model.save(checkpoint_path)
             if self.verbose > 0:
-                print(f"Checkpoint saved: {checkpoint_path}")
+                print(f"💾 Checkpoint saved: {checkpoint_path}\n")
 
         return True
+
+    def _print_progress(self):
+        """Print detailed training progress."""
+        if len(self.episode_rewards) == 0:
+            return
+
+        # Time statistics
+        elapsed = time.time() - self.start_time if self.start_time else 0
+        steps_per_sec = self.num_timesteps / elapsed if elapsed > 0 else 0
+
+        print(f"\n{'─'*70}")
+        print(f"  ENGINEER TRAINING PROGRESS - Step {self.num_timesteps:,}")
+        print(f"{'─'*70}")
+        print(f"  Elapsed time: {elapsed/60:.1f} min  |  Speed: {steps_per_sec:.0f} steps/s")
+
+        # Recent episode stats (last 100 episodes)
+        recent_n = min(100, len(self.episode_rewards))
+        recent_rewards = self.episode_rewards[-recent_n:]
+        recent_lengths = self.episode_lengths[-recent_n:]
+
+        print(f"\n  Last {recent_n} episodes:")
+        print(f"    Avg reward: {np.mean(recent_rewards):.2f} ± {np.std(recent_rewards):.2f}")
+        print(f"    Best reward: {max(recent_rewards):.2f}")
+        print(f"    Avg steps: {np.mean(recent_lengths):.1f}")
+
+        # Strategy decision statistics (if available)
+        if len(self.episode_actions) > 0:
+            recent_actions = self.episode_actions[-recent_n:]
+            action_names = ["Continue", "Pit-Soft", "Pit-Medium", "Pit-Hard"]
+
+            print(f"\n  Strategy decisions (last {len(recent_actions)} episodes):")
+            for action_id in range(4):
+                count = sum(1 for a in recent_actions if a == action_id)
+                pct = count / len(recent_actions) * 100 if recent_actions else 0
+                action_name = action_names[action_id] if action_id < len(action_names) else f"Action-{action_id}"
+                print(f"    {action_name}: {count} ({pct:.1f}%)")
+
+        # Update best mean reward
+        mean_reward = np.mean(recent_rewards)
+        if mean_reward > self.best_mean_reward:
+            self.best_mean_reward = mean_reward
+            print(f"\n  🏆 New best mean reward: {self.best_mean_reward:.2f}")
+
+        print(f"{'─'*70}\n")
+
+        # Clear old data to save memory (keep last 1000)
+        max_keep = 1000
+        if len(self.episode_rewards) > max_keep:
+            self.episode_rewards = self.episode_rewards[-max_keep:]
+            self.episode_lengths = self.episode_lengths[-max_keep:]
+            self.episode_actions = self.episode_actions[-max_keep:]
 
     def _on_rollout_end(self) -> None:
         """Called at the end of a rollout (DQN doesn't have rollouts, but keeping for consistency)."""
         pass
+
+    def _on_training_end(self) -> None:
+        """Called at the end of training."""
+        if self.verbose > 0:
+            total_time = time.time() - self.start_time if self.start_time else 0
+            print(f"\n{'='*70}")
+            print(f"  ENGINEER TRAINING COMPLETE")
+            print(f"{'='*70}")
+            print(f"  Total time: {total_time/60:.1f} minutes")
+            print(f"  Total episodes: {len(self.episode_rewards)}")
+            if len(self.episode_rewards) > 0:
+                print(f"  Best mean reward: {self.best_mean_reward:.2f}")
+            print(f"{'='*70}\n")
 
 
 class StrategyAnalyzer:

@@ -58,13 +58,18 @@ def main():
     # For now, using the same environment
     env = gym.make("F1Mars-v0", track_name=args.track)
 
-    print(f"\n{'='*60}")
-    print(f"Training Race Engineer Agent")
-    print(f"{'='*60}")
-    print(f"Track: {args.track}")
-    print(f"Total timesteps: {args.timesteps:,}")
-    print(f"Learning rate: {args.learning_rate}")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*70}")
+    print(f"  F1-MARS RACE ENGINEER TRAINING")
+    print(f"{'='*70}")
+    print(f"Track:            {args.track}")
+    print(f"Total timesteps:  {args.timesteps:,}")
+    print(f"Learning rate:    {args.learning_rate}")
+    print(f"Save frequency:   Every {args.save_freq:,} steps")
+    print(f"Device:           {args.device}")
+    print(f"\nModel directory:  {MODELS_DIR}")
+    if args.tensorboard:
+        print(f"TensorBoard log:  {LOGS_DIR}")
+    print(f"{'='*70}\n")
 
     # Create agent
     tensorboard_log = LOGS_DIR if args.tensorboard else None
@@ -75,10 +80,11 @@ def main():
         device=args.device,
     )
 
-    # Create callback
+    # Create callback with detailed progress tracking
     callback = EngineerTrainingCallback(
         save_freq=args.save_freq,
         save_path=MODELS_DIR,
+        print_freq=5000,  # Print progress every 5k steps
         verbose=1
     )
 
@@ -96,10 +102,16 @@ def main():
     final_path = f"{MODELS_DIR}/engineer_final_{args.track}.zip"
     agent.save(final_path)
 
-    print(f"\n{'='*60}")
-    print(f"Training Complete!")
-    print(f"Final model saved to: {final_path}")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*70}")
+    print(f"  TRAINING COMPLETE")
+    print(f"{'='*70}")
+    print(f"Final model saved: {final_path}")
+    print(f"\nTo evaluate the model:")
+    print(f"  python scripts/evaluate_engineer.py --model {final_path}")
+    if args.tensorboard:
+        print(f"\nTo view training progress:")
+        print(f"  tensorboard --logdir {LOGS_DIR}")
+    print(f"{'='*70}\n")
 
     env.close()
 

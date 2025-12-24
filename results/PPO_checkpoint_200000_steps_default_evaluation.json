@@ -1,0 +1,106 @@
+{
+  "model": "PPO_checkpoint_200000_steps",
+  "track": "default",
+  "episodes": 10,
+  "metrics": {
+    "lap_time_mean": 0,
+    "lap_time_std": 0,
+    "lap_time_best": 0,
+    "lap_time_worst": 0,
+    "total_laps": 10,
+    "completion_rate": 1.0,
+    "laps_completed_mean": 1.0,
+    "laps_completed_std": 0.0,
+    "total_reward_mean": -1726.1992116912975,
+    "total_reward_std": 2.2737367544323206e-13,
+    "on_track_percentage": 100.0,
+    "max_velocity": 18.995345965382764,
+    "mean_velocity": 0.6359263056550801,
+    "tyre_wear_per_lap_mean": 1.9254679321825834,
+    "final_tyre_wear_mean": 1.9254679321825834,
+    "off_track_count_mean": 0.0,
+    "off_track_count_total": 0
+  },
+  "per_episode": [
+    {
+      "episode": 0,
+      "laps_completed": 1,
+      "total_time": 297.6085367202759,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    },
+    {
+      "episode": 1,
+      "laps_completed": 1,
+      "total_time": 292.5782117843628,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    },
+    {
+      "episode": 2,
+      "laps_completed": 1,
+      "total_time": 294.34039211273193,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    },
+    {
+      "episode": 3,
+      "laps_completed": 1,
+      "total_time": 293.3322641849518,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    },
+    {
+      "episode": 4,
+      "laps_completed": 1,
+      "total_time": 291.35749554634094,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    },
+    {
+      "episode": 5,
+      "laps_completed": 1,
+      "total_time": 293.0631048679352,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    },
+    {
+      "episode": 6,
+      "laps_completed": 1,
+      "total_time": 294.2508385181427,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    },
+    {
+      "episode": 7,
+      "laps_completed": 1,
+      "total_time": 292.67194867134094,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    },
+    {
+      "episode": 8,
+      "laps_completed": 1,
+      "total_time": 293.6226878166199,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    },
+    {
+      "episode": 9,
+      "laps_completed": 1,
+      "total_time": 292.2291624546051,
+      "total_reward": -1726.1992116912973,
+      "on_track_percentage": 100.0,
+      "lap_times": []
+    }
+  ]
+}

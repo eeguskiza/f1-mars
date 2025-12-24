@@ -43,14 +43,21 @@ class F1Env(gym.Env):
         25. Total laps
         26. Distance along track (normalized)
 
-    Reward Function:
-        - Progress reward: +0.1 per meter forward, -0.2 per meter backward
-        - Checkpoint bonus: +10 per checkpoint
-        - Lap completion: +100 + time bonus
-        - Off-track penalty: -5 per timestep
-        - Low speed penalty: -0.5 if velocity < 10 m/s
-        - High wear penalty: -0.1 if wear > 80%
-        - Dead tyres penalty: -50
+    Reward Function (AGGRESSIVE for F1 Racing):
+        1. Speed reward (PRINCIPAL): velocity projected along track direction × 2.0
+           - DOUBLED weight to force F1-level speeds (250-350 km/h)
+           - Extra bonus (+0.5) for speeds >216 km/h (60 m/s)
+           - Penalty for going slow or backwards
+        2. Progress reward: +0.1 per meter forward along track
+        3. Checkpoint bonus: +5 per checkpoint
+        4. Lap completion: +50 + time bonus (2 points per second under reference)
+        5. Penalties (AGGRESSIVE):
+           - Low speed: -1.0 proportional if < 20 m/s (72 km/h) - FORCES F1 SPEEDS
+           - Off-track: -1.0 base + speed-proportional penalty
+           - Time step: -0.01 per step (encourages fast completion)
+           - High wear: -0.1 proportional if > 70%
+           - Dead tyres: -50
+        6. Bonus: grip utilization when cornering aggressively on-track
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 60}
@@ -458,6 +465,14 @@ class F1Env(gym.Env):
 
         return distances
 
+    def _normalize_angle(self, angle: float) -> float:
+        """Normalize angle to [-pi, pi]."""
+        while angle > np.pi:
+            angle -= 2 * np.pi
+        while angle < -np.pi:
+            angle += 2 * np.pi
+        return angle
+
     def _calculate_reward(
         self,
         old_distance_along: float,
@@ -469,16 +484,13 @@ class F1Env(gym.Env):
         on_track: bool
     ) -> float:
         """
-        Calculate reward for current step.
+        Reward function balanceada para racing.
 
-        Reward components:
-        - Progress: +0.1 per meter forward, -0.2 per meter backward
-        - Checkpoint: +10
-        - Lap completion: +100 + time bonus
-        - Off-track: -5 per step
-        - Low speed: -0.5 if < 10 m/s
-        - High wear: -0.1 if > 80%
-        - Dead tyres: -50
+        Principios:
+        1. Velocidad en dirección del track es el reward principal
+        2. Progreso por checkpoints como bonus
+        3. Penalizaciones moderadas que no dominan
+        4. Time penalty para incentivar velocidad
 
         Args:
             old_distance_along: Previous distance along track
@@ -494,50 +506,98 @@ class F1Env(gym.Env):
         """
         reward = 0.0
 
-        # === PROGRESS REWARD ===
-        # Handle wraparound at finish line
+        # === 1. SPEED REWARD (PRINCIPAL) ===
+        # Velocidad proyectada en la dirección del track
+        # Este es el componente MÁS IMPORTANTE
+
+        # Obtener dirección del track en la posición actual
+        track_heading = self.track.get_direction_at_distance(new_distance_along)
+
+        # Diferencia angular entre coche y track
+        heading_diff = abs(self._normalize_angle(self.car.heading - track_heading))
+
+        # Velocidad efectiva = velocidad * cos(heading_diff)
+        # Si va en dirección correcta: full speed reward
+        # Si va perpendicular: 0 reward
+        # Si va en reversa: negative reward
+        velocity_along_track = self.car.velocity * np.cos(heading_diff)
+
+        # Normalizar por velocidad máxima y escalar
+        # AGRESIVO: Peso 2.0 para forzar velocidades F1
+        speed_reward = (velocity_along_track / self.car.max_speed) * 2.0
+        reward += speed_reward
+
+        # BONUS ADICIONAL por ir muy rápido (>60 m/s = 216 km/h)
+        if velocity_along_track > 60.0 and on_track:
+            # Bonus progresivo: más rápido = más bonus
+            speed_bonus = (velocity_along_track - 60.0) / 37.0  # 0 a 1 para 60-97 m/s
+            reward += speed_bonus * 0.5  # Hasta +0.5 extra
+
+        # === 2. PROGRESS REWARD ===
+        # Bonus por avanzar en el circuito
         progress = new_distance_along - old_distance_along
+
+        # Manejar wrap-around (cruzar línea de meta)
         if progress < -self.track.total_length / 2:
-            # Crossed finish line forward
             progress += self.track.total_length
         elif progress > self.track.total_length / 2:
-            # Crossed finish line backward
             progress -= self.track.total_length
 
-        if progress > 0:
-            reward += progress * 0.1
-        else:
-            reward += progress * 0.2  # Higher penalty for going backward
+        # Escalar progreso (típicamente 0-5 metros por step)
+        progress_reward = progress * 0.1  # 0.1 reward por metro
+        reward += progress_reward
 
-        # === CHECKPOINT BONUS ===
+        # === 3. CHECKPOINT BONUS ===
         if new_checkpoint > old_checkpoint:
-            reward += 10.0
+            reward += 5.0  # Reducido de 10.0 para no dominar
         elif new_checkpoint == 0 and old_checkpoint == len(self.track.checkpoint_indices) - 1:
             # Crossed finish line
-            reward += 10.0
+            reward += 5.0
 
-        # === LAP COMPLETION BONUS ===
+        # === 4. LAP COMPLETION BONUS ===
         if lap_completed:
-            reward += 100.0
-            # Time bonus: faster laps get more reward
-            time_bonus = (self.reference_lap_time - actual_lap_time) * 0.5
-            reward += time_bonus
+            # Bonus base + bonus por tiempo
+            reference_time = self.reference_lap_time
 
-        # === OFF-TRACK PENALTY ===
+            time_bonus = max(0, (reference_time - actual_lap_time) * 2.0)  # 2 puntos por segundo bajo referencia
+            reward += 50.0 + time_bonus  # Reducido de 100.0
+
+        # === 5. PENALIZACIONES (MODERADAS) ===
+
+        # 5a. Penalización por velocidad MUY baja (CRÍTICO)
+        # Esto evita el óptimo local de "quedarse parado"
+        # Para F1: cualquier cosa < 20 m/s (72 km/h) es LENTO
+        min_speed_threshold = 20.0  # m/s (~72 km/h) - mínimo razonable para F1
+        if self.car.velocity < min_speed_threshold:
+            # Penalización proporcional: más lento = más penalización
+            speed_penalty = (min_speed_threshold - self.car.velocity) / min_speed_threshold
+            reward -= speed_penalty * 1.0  # Hasta -1.0 por step si está parado (MUY AGRESIVO)
+
+        # 5b. Penalización por estar fuera de pista
         if not on_track:
-            reward -= 5.0
+            reward -= 1.0  # Reducido de -5.0
+            # Penalización adicional proporcional a velocidad (crash a alta velocidad = peor)
+            reward -= (self.car.velocity / self.car.max_speed) * 0.5
 
-        # === LOW SPEED PENALTY ===
-        if self.car.velocity < 10.0:
-            reward -= 0.5
+        # 5c. Time step penalty (pequeña, constante)
+        # Incentiva terminar rápido sin dominar otros rewards
+        reward -= 0.01  # Pequeño costo por existir
 
-        # === HIGH WEAR PENALTY ===
-        if self.tyres.wear > 80.0:
-            reward -= 0.1
+        # 5d. Penalización por desgaste excesivo (suave)
+        if self.tyres.wear > 70:
+            wear_penalty = (self.tyres.wear - 70) / 100  # 0 a 0.3
+            reward -= wear_penalty * 0.1
 
-        # === DEAD TYRES PENALTY ===
+        # 5e. Dead tyres penalty
         if self.tyres.is_dead():
             reward -= 50.0
+
+        # === 6. BONUS POR GRIP UTILIZADO (OPCIONAL) ===
+        # Recompensar usar el coche cerca del límite
+        lateral_force = self.car.get_lateral_force()
+        if on_track and lateral_force > 0.3:
+            # Bonus por curvar agresivamente mientras se mantiene en pista
+            reward += lateral_force * 0.1
 
         return reward
 

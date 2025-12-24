@@ -90,3 +90,4 @@ logs/*
 # PyGame recordings (if any)
 *.avi
 *.mp4
+.claude/

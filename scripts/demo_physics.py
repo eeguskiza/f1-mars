@@ -23,7 +23,8 @@ def load_module(name, path):
     return module
 
 # Cargar módulos
-base_path = Path(__file__).parent / 'f1_mars'
+# CORRECTO (sube un nivel: scripts -> root -> f1_mars)
+base_path = Path(__file__).resolve().parent.parent / 'f1_mars'
 car_module = load_module('car', base_path / 'envs' / 'car.py')
 track_module = load_module('track', base_path / 'envs' / 'track.py')
 tyres_module = load_module('tyres', base_path / 'envs' / 'tyres.py')
@@ -54,7 +55,7 @@ def simulate_lap():
     # ===== 1. Crear circuito =====
     print_header("1. Generando Circuito")
 
-    track_data = TrackGenerator.generate_oval(length=1000, width=80)
+    track_data = TrackGenerator.generate_oval(length=1000, width=12.0)
     track = Track.__new__(Track)
     track.load_from_dict(track_data)
 
@@ -241,7 +242,7 @@ def simulate_lap():
 
     if wear_per_lap > 0:
         laps_remaining = TyreStrategy.estimate_laps_remaining(tyres, wear_per_lap)
-        should_pit = TyreStrategy.should_pit(tyres, laps_remaining=10, pit_time_cost=20.0)
+        should_pit, reason = TyreStrategy.should_pit(tyres, laps_remaining=10, avg_wear_per_lap=wear_per_lap, pit_time_cost_laps=1.0)
 
         print(f"Desgaste por vuelta: ~{wear_per_lap:.2f}%")
         print(f"Vueltas estimadas restantes: {laps_remaining}")

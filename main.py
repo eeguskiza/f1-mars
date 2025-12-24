@@ -14,6 +14,21 @@ Usage:
 
 import sys
 import subprocess
+import importlib
+import os
+from pathlib import Path
+
+# Add project root to Python path so f1_mars module can be imported
+project_root = Path(__file__).parent.resolve()
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+# Prepare environment for subprocesses
+subprocess_env = os.environ.copy()
+pythonpath = str(project_root)
+if 'PYTHONPATH' in subprocess_env:
+    pythonpath = f"{project_root}{os.pathsep}{subprocess_env['PYTHONPATH']}"
+subprocess_env['PYTHONPATH'] = pythonpath
 
 
 def print_usage():
@@ -34,15 +49,15 @@ def main():
     
     if command == "demo":
         print("Running physics demo...")
-        exec(open('scripts/demo_physics.py').read())
-    
+        subprocess.run([sys.executable, "scripts/demo_physics.py"], env=subprocess_env)
+
     elif command == "random":
         print("Running random agent example...")
-        exec(open('scripts/example_random_agent.py').read())
-    
+        subprocess.run([sys.executable, "scripts/example_random_agent.py"], env=subprocess_env)
+
     elif command == "test":
         print("Running test suite...")
-        subprocess.run([sys.executable, "-m", "pytest", "tests/", "-v"])
+        subprocess.run([sys.executable, "-m", "pytest", "tests/", "-v"], env=subprocess_env)
     
     elif command in ("help", "-h", "--help"):
         print_usage()

@@ -10,7 +10,14 @@
       "Bash(python main.py:*)",
       "Bash(python:*)",
       "Bash(pytest:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(timeout 10 python3:*)",
+      "Bash(PYTHONPATH=/home/eeguskiza/DEUSTO/rl/f1-mars timeout 15 python3:*)",
+      "Bash(PYTHONPATH=/home/eeguskiza/DEUSTO/rl/f1-mars python3:*)",
+      "Bash(PYTHONPATH=. timeout 10 python3:*)",
+      "Bash(PYTHONPATH=. python3:*)",
+      "Bash(timeout 15 python3:*)",
+      "Bash(timeout 5 python3:*)"
     ]
   }
 }

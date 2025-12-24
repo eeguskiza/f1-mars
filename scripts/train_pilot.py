@@ -31,6 +31,28 @@ from f1_mars.envs import F1Env, CurriculumWrapper
 from tracks import list_available_tracks, get_tracks_by_difficulty, TRACKS_DIR
 
 
+class VerboseEvalCallback(BaseCallback):
+    """
+    Callback that prints status messages during evaluation.
+    Makes it clear when eval is running (so it doesn't look frozen).
+    """
+
+    def __init__(self, verbose: int = 1):
+        super().__init__(verbose)
+        self.is_evaluating = False
+        self.eval_episode = 0
+
+    def _on_step(self) -> bool:
+        # Check if we're in evaluation mode
+        if hasattr(self, 'locals') and 'dones' in self.locals:
+            dones = self.locals.get('dones', [])
+            if any(dones):
+                self.eval_episode += 1
+                if self.verbose > 0:
+                    print(f"  Eval episode {self.eval_episode} completed", flush=True)
+        return True
+
+
 class F1MetricsCallback(BaseCallback):
     """
     Custom callback for logging F1-specific metrics to TensorBoard.
@@ -286,14 +308,14 @@ def parse_args():
     parser.add_argument(
         "--eval-freq",
         type=int,
-        default=10000,
-        help="Evaluate every N timesteps"
+        default=50000,
+        help="Evaluate every N timesteps (default: 50000, less frequent = faster training)"
     )
     parser.add_argument(
         "--eval-episodes",
         type=int,
-        default=5,
-        help="Number of episodes for evaluation"
+        default=3,
+        help="Number of episodes for evaluation (default: 3, fewer = faster)"
     )
     parser.add_argument(
         "--tensorboard-log",
@@ -328,7 +350,7 @@ def parse_args():
         type=str,
         default="cpu",
         choices=["auto", "cuda", "cpu"],
-        help="Device to use for training"
+        help="Device to use (CPU recommended for vectorial obs + parallel envs)"
     )
     parser.add_argument(
         "--max-laps",
@@ -529,8 +551,33 @@ def main():
         verbose=1
     )
 
-    # Evaluation callback
-    eval_callback = EvalCallback(
+    # Evaluation callback with custom wrapper for progress
+    class VerboseEvalWrapper(EvalCallback):
+        """Wrapper that prints when evaluation starts/ends."""
+
+        def _on_step(self) -> bool:
+            # Check if it's time to evaluate
+            if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+                print(f"\n{'='*50}")
+                print(f"  EVALUATION at step {self.num_timesteps}")
+                print(f"  Running {self.n_eval_episodes} episodes...")
+                print(f"{'='*50}\n")
+
+            result = super()._on_step()
+
+            # Print results after evaluation
+            if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+                if len(self.evaluations_results) > 0:
+                    last_mean = self.last_mean_reward
+                    print(f"\n{'='*50}")
+                    print(f"  EVALUATION COMPLETE")
+                    print(f"  Mean reward: {last_mean:.2f}")
+                    print(f"  Resuming training...")
+                    print(f"{'='*50}\n")
+
+            return result
+
+    eval_callback = VerboseEvalWrapper(
         eval_env,
         best_model_save_path=args.model_dir,
         log_path=args.tensorboard_log,

@@ -1,158 +1,93 @@
 # F1-MARS Training & Evaluation Scripts
 
-Complete guide for training and evaluating F1-MARS agents (Pilot and Engineer) using different RL algorithms.
+Scripts para entrenar y evaluar agentes de F1-MARS.
 
-## 📋 Table of Contents
+## 📁 Scripts Disponibles
 
-- [Quick Start](#quick-start)
-- [Training Pilot Agent](#training-pilot-agent)
-- [Training Engineer Agent](#training-engineer-agent)
-- [Evaluation](#evaluation)
-- [Complete Workflows](#complete-workflows)
-- [Monitoring & Debugging](#monitoring--debugging)
+| Script | Descripción | Agente | Algoritmos | Documentación |
+|--------|-------------|--------|------------|---------------|
+| **train_pilot.py** | Entrena el piloto autónomo (control del coche) | Pilot | PPO, SAC, TD3 | [→ Guía Completa](TRAIN_PILOT.md) |
+| **train_engineer.py** | Entrena el ingeniero de carrera (estrategia) | Engineer | DQN | [→ Guía Completa](TRAIN_ENGINEER.md) |
+| **evaluate.py** | Evalúa modelos entrenados con métricas detalladas | Ambos | Todos | [→ Guía de Evaluación](../docs/EVALUATION_GUIDE.md) |
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
-### Train a Pilot (Basic)
+### Entrenar Piloto
 
 ```bash
-# Default PPO on oval track
-python scripts/train_pilot.py --total-timesteps 500000
+# PPO (recomendado para principiantes)
+python scripts/train_pilot.py --algorithm PPO --total-timesteps 500000
 
-# With curriculum learning (recommended for beginners)
+# Con curriculum learning automático
 python scripts/train_pilot.py --curriculum --total-timesteps 1000000
-
-# Specific track
-python scripts/train_pilot.py \
-    --track tracks/monza.json \
-    --total-timesteps 500000
 ```
 
-### Evaluate a Model
+**→ [Guía completa de entrenamiento del piloto](TRAIN_PILOT.md)**
+
+### Entrenar Ingeniero
 
 ```bash
-# Basic evaluation
+# Estrategia con DQN
+python scripts/train_engineer.py --track monza --timesteps 500000
+```
+
+**→ [Guía completa de entrenamiento del ingeniero](TRAIN_ENGINEER.md)**
+
+### Evaluar Modelo
+
+```bash
+# Evaluación básica
 python scripts/evaluate.py --model trained_models/PPO_default_final.zip
 
-# With plots and metrics
+# Con visualización y grabación
 python scripts/evaluate.py \
-    --model trained_models/PPO_default_final.zip \
+    --model trained_models/PPO_final.zip \
     --episodes 20 \
+    --record \
     --output results/
 ```
 
+**→ [Guía completa de evaluación](../docs/EVALUATION_GUIDE.md)**
+
 ---
 
-## Training Pilot Agent
+## 🎯 Casos de Uso
 
-The pilot agent controls steering, throttle, and braking. Train using `train_pilot.py`.
-
-### Algorithm Comparison
-
-#### PPO (Proximal Policy Optimization) - **RECOMMENDED**
-
-**Best for:** Stable learning, general racing
+### 1. Quiero entrenar un piloto desde cero
 
 ```bash
+# Opción A: Training tradicional (PPO)
 python scripts/train_pilot.py \
     --algorithm PPO \
-    --learning-rate 3e-4 \
-    --batch-size 64 \
-    --n-envs 8 \
     --total-timesteps 500000
-```
 
-**Pros:**
-- ✅ Very stable and reliable
-- ✅ Good sample efficiency
-- ✅ Works well for continuous control
-- ✅ Easy to tune
-
-**Cons:**
-- ⚠️ Can be slower than SAC for complex tasks
-
-**When to use:**
-- First time training
-- Need stable, consistent results
-- Limited computational resources
-
----
-
-#### SAC (Soft Actor-Critic)
-
-**Best for:** Exploration, complex tracks, fast convergence
-
-```bash
+# Opción B: Con curriculum learning (recomendado)
 python scripts/train_pilot.py \
-    --algorithm SAC \
-    --learning-rate 3e-4 \
-    --batch-size 256 \
-    --n-envs 16 \
-    --total-timesteps 500000
+    --curriculum \
+    --total-timesteps 1000000
 ```
 
-**Pros:**
-- ✅ Better exploration
-- ✅ Off-policy (reuses past experience)
-- ✅ Often converges faster
-- ✅ Good for complex state spaces
+**Ver:** [TRAIN_PILOT.md](TRAIN_PILOT.md) - Sección "Algoritmos Disponibles"
 
-**Cons:**
-- ⚠️ Requires more hyperparameter tuning
-- ⚠️ Higher memory usage
-- ⚠️ Can be unstable with poor hyperparameters
-
-**When to use:**
-- Complex, technical tracks
-- Want faster convergence
-- Have computational resources
-- Need good exploration
-
----
-
-#### TD3 (Twin Delayed DDPG)
-
-**Best for:** Precision driving, deterministic control
+### 2. Quiero comparar diferentes algoritmos
 
 ```bash
-python scripts/train_pilot.py \
-    --algorithm TD3 \
-    --learning-rate 1e-3 \
-    --batch-size 100 \
-    --n-envs 8 \
-    --total-timesteps 500000
+# Entrenar con cada algoritmo
+python scripts/train_pilot.py --algorithm PPO --total-timesteps 500000
+python scripts/train_pilot.py --algorithm SAC --total-timesteps 500000
+python scripts/train_pilot.py --algorithm TD3 --total-timesteps 500000
+
+# Comparar dos modelos
+python scripts/evaluate.py \
+    --model trained_models/PPO_default_final.zip \
+    --compare trained_models/SAC_default_final.zip
 ```
 
-**Pros:**
-- ✅ Deterministic policy (predictable)
-- ✅ Good for fine control
-- ✅ Stable learning
-- ✅ Lower memory than SAC
+**Ver:** [TRAIN_PILOT.md](TRAIN_PILOT.md) - Sección "Comparación de Algoritmos"
 
-**Cons:**
-- ⚠️ Less exploration than SAC
-- ⚠️ Can get stuck in local optima
-- ⚠️ Slower than SAC for some tasks
-
-**When to use:**
-- Need deterministic behavior
-- Precision control important
-- Time trials / qualifying laps
-
----
-
-### Training Options
-
-#### Basic Training
-
-```bash
-# Default settings (PPO, oval track, 8 envs)
-python scripts/train_pilot.py --total-timesteps 500000
-```
-
-#### Specific Track
+### 3. Quiero entrenar en un circuito específico
 
 ```bash
 python scripts/train_pilot.py \
@@ -161,593 +96,292 @@ python scripts/train_pilot.py \
     --total-timesteps 500000
 ```
 
-#### Multi-Track Training
+**Ver:** [TRAIN_PILOT.md](TRAIN_PILOT.md) - Sección "Training Options"
 
-```bash
-# Rotate through all tracks
-python scripts/train_pilot.py \
-    --multi-track \
-    --total-timesteps 1000000 \
-    --n-envs 16
-```
-
-#### Training by Difficulty
-
-```bash
-# Beginner tracks (difficulty 0)
-python scripts/train_pilot.py --difficulty 0 --total-timesteps 200000
-
-# Intermediate tracks (difficulty 1)
-python scripts/train_pilot.py --difficulty 1 --total-timesteps 300000
-
-# Advanced tracks (difficulty 2)
-python scripts/train_pilot.py --difficulty 2 --total-timesteps 500000
-
-# Expert tracks (difficulty 3)
-python scripts/train_pilot.py --difficulty 3 --total-timesteps 1000000
-```
-
-#### Curriculum Learning (Automatic Progression)
-
-```bash
-# Start at basic level, automatically progress
-python scripts/train_pilot.py \
-    --curriculum \
-    --total-timesteps 1000000 \
-    --n-envs 8
-
-# Start at intermediate level
-python scripts/train_pilot.py \
-    --curriculum \
-    --curriculum-level 1 \
-    --total-timesteps 500000
-```
-
-📖 **See:** [Curriculum Learning Guide](../docs/CURRICULUM_LEARNING.md)
-
-#### Resume Training
-
-```bash
-# Continue from checkpoint
-python scripts/train_pilot.py \
-    --load-model trained_models/PPO_checkpoint_100000_steps.zip \
-    --total-timesteps 500000
-```
-
-#### High-Performance Training
-
-```bash
-# Maximum speed (requires powerful CPU)
-python scripts/train_pilot.py \
-    --algorithm SAC \
-    --n-envs 32 \
-    --batch-size 256 \
-    --total-timesteps 2000000 \
-    --checkpoint-freq 100000
-```
-
----
-
-### Hyperparameters Reference
-
-#### Learning Rate
-
-```bash
-# Conservative (stable but slow)
---learning-rate 1e-4
-
-# Standard (recommended)
---learning-rate 3e-4
-
-# Aggressive (faster but less stable)
---learning-rate 1e-3
-```
-
-#### Batch Size
-
-```bash
-# PPO
---batch-size 64    # Standard
---batch-size 128   # Larger batches
-
-# SAC / TD3
---batch-size 256   # Recommended
---batch-size 512   # Large (if memory allows)
-```
-
-#### Parallel Environments
-
-```bash
---n-envs 4    # Low resources
---n-envs 8    # Standard
---n-envs 16   # High performance
---n-envs 32   # Maximum (powerful CPU)
-```
-
-**Note:** More environments = faster data collection but higher CPU usage
-
-#### Training Duration
-
-```bash
---total-timesteps 100000    # Quick test
---total-timesteps 500000    # Standard training
---total-timesteps 1000000   # Full training
---total-timesteps 2000000   # Extended training
-```
-
----
-
-## Training Engineer Agent
-
-The engineer agent makes strategic decisions about pit stops and tyre management. Train using `train_engineer.py`.
-
-### Basic Training
-
-```bash
-python scripts/train_engineer.py \
-    --track example_circuit \
-    --timesteps 500000 \
-    --learning-rate 1e-4
-```
-
-### Custom Configuration
+### 4. Quiero entrenar estrategia de pit stops
 
 ```bash
 python scripts/train_engineer.py \
     --track monza \
-    --timesteps 1000000 \
-    --learning-rate 1e-4 \
-    --save-freq 50000 \
+    --timesteps 500000 \
     --tensorboard
 ```
 
-### Resume Training
+**Ver:** [TRAIN_ENGINEER.md](TRAIN_ENGINEER.md)
+
+### 5. Quiero evaluar y comparar todos mis modelos
 
 ```bash
-python scripts/train_engineer.py \
-    --track monza \
-    --timesteps 500000 \
-    --load-model trained_models/engineer_checkpoint_250000.zip
-```
+# Evaluar todos los modelos en trained_models/
+for model in trained_models/*.zip; do
+    python scripts/evaluate.py --model "$model" --episodes 10
+done
 
-**Note:** Engineer uses DQN (discrete actions for strategy decisions)
-
----
-
-## Evaluation
-
-Evaluate trained models using `evaluate.py`.
-
-### Basic Evaluation
-
-```bash
-python scripts/evaluate.py \
-    --model trained_models/PPO_default_final.zip \
-    --episodes 10
-```
-
-**Outputs:**
-- JSON report with metrics
-- 4-panel visualization plots
-- Console summary
-
-### Evaluation on Specific Track
-
-```bash
-python scripts/evaluate.py \
-    --model trained_models/PPO_monza_final.zip \
-    --track tracks/monza.json \
-    --episodes 20 \
-    --output results/monza/
-```
-
-### Compare Two Models
-
-```bash
+# Comparación directa de dos modelos
 python scripts/evaluate.py \
     --model trained_models/PPO_v1.zip \
     --compare trained_models/SAC_v1.zip \
-    --episodes 10
-```
-
-**Output includes:**
-- Side-by-side metrics comparison
-- Winner determination per metric
-- Percentage differences
-- Comparison JSON report
-
-### Record Video
-
-```bash
-python scripts/evaluate.py \
-    --model trained_models/PPO_default_final.zip \
-    --record \
-    --record-path recordings/best_lap.mp4
-```
-
-**Requires:** `pip install opencv-python`
-
-### With Visualization
-
-```bash
-python scripts/evaluate.py \
-    --model trained_models/PPO_default_final.zip \
-    --render \
-    --episodes 5
-```
-
-### Metrics Collected
-
-Evaluation provides comprehensive metrics:
-
-- **Lap Times**: mean, std, best, worst
-- **Completion Rate**: % of episodes completing ≥1 lap
-- **On-Track Percentage**: % of time on track
-- **Off-Track Incidents**: Count of track exits
-- **Velocity**: max and mean speed
-- **Tyre Wear**: per-lap and final wear
-- **Reward**: total cumulative reward
-
-📊 **See:** [Evaluation Guide](../docs/EVALUATION_GUIDE.md)
-
----
-
-## Complete Workflows
-
-### Workflow 1: Train from Scratch (PPO)
-
-```bash
-# 1. Train on oval track
-python scripts/train_pilot.py \
-    --track tracks/oval.json \
-    --algorithm PPO \
-    --total-timesteps 200000 \
-    --model-dir models/stage1/
-
-# 2. Evaluate
-python scripts/evaluate.py \
-    --model models/stage1/PPO_oval_final.zip \
-    --track tracks/oval.json \
     --episodes 20
-
-# 3. Transfer to complex track
-python scripts/train_pilot.py \
-    --track tracks/monza.json \
-    --algorithm PPO \
-    --total-timesteps 500000 \
-    --load-model models/stage1/PPO_oval_final.zip \
-    --model-dir models/stage2/
-
-# 4. Final evaluation
-python scripts/evaluate.py \
-    --model models/stage2/PPO_monza_final.zip \
-    --track tracks/monza.json \
-    --episodes 50 \
-    --record
 ```
+
+**Ver:** Sección "Evaluación Batch" más abajo
 
 ---
 
-### Workflow 2: Curriculum Learning (Automatic)
+## 📊 Comparación de Algoritmos
+
+| Algoritmo | Tipo | Velocidad | Estabilidad | Exploración | Mejor Para |
+|-----------|------|-----------|-------------|-------------|------------|
+| **PPO** | On-policy | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | Principiantes, entrenamiento estable |
+| **SAC** | Off-policy | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Circuitos complejos, convergencia rápida |
+| **TD3** | Off-policy | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | Control preciso, time trials |
+| **DQN** | Off-policy | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | Decisiones discretas (estrategia) |
+
+**→ Detalles completos:** [TRAIN_PILOT.md - Comparación de Algoritmos](TRAIN_PILOT.md#comparación-de-algoritmos)
+
+---
+
+## 🔄 Workflow Completo
+
+### Pipeline End-to-End
 
 ```bash
-# 1. Train with automatic curriculum
+# 1. Entrenar piloto con curriculum
 python scripts/train_pilot.py \
     --curriculum \
     --algorithm PPO \
     --total-timesteps 1000000 \
-    --n-envs 8 \
-    --tensorboard-log logs/curriculum/
+    --model-dir models/pilot/
 
-# 2. Monitor progress
-tensorboard --logdir logs/curriculum/
+# 2. Entrenar ingeniero de estrategia
+python scripts/train_engineer.py \
+    --track monza \
+    --timesteps 500000 \
+    --model-dir models/engineer/
 
-# 3. Evaluate final model
+# 3. Evaluar piloto
 python scripts/evaluate.py \
-    --model trained_models/PPO_multi_final.zip \
-    --episodes 30 \
-    --output results/curriculum/
+    --model models/pilot/PPO_multi_final.zip \
+    --episodes 20 \
+    --output results/pilot/
 
-# 4. Test on different tracks
-for track in tracks/*.json; do
-    python scripts/evaluate.py \
-        --model trained_models/PPO_multi_final.zip \
-        --track "$track" \
-        --episodes 10
-done
+# 4. Evaluar ingeniero
+python scripts/evaluate.py \
+    --model models/engineer/engineer_final_monza.zip \
+    --episodes 20 \
+    --output results/engineer/
+
+# 5. Ver resultados en TensorBoard
+tensorboard --logdir logs/
 ```
 
 ---
 
-### Workflow 3: Algorithm Comparison
+## 📈 Evaluación Batch de Múltiples Modelos
 
-```bash
-# Train with each algorithm
-for algo in PPO SAC TD3; do
-    python scripts/train_pilot.py \
-        --algorithm $algo \
-        --track tracks/monza.json \
-        --total-timesteps 500000 \
-        --model-dir models/${algo}/
-done
+### Script para Evaluar Todos los Modelos
 
-# Compare all three
-python scripts/evaluate.py \
-    --model models/PPO/PPO_monza_final.zip \
-    --compare models/SAC/SAC_monza_final.zip \
-    --episodes 20
-
-python scripts/evaluate.py \
-    --model models/SAC/SAC_monza_final.zip \
-    --compare models/TD3/TD3_monza_final.zip \
-    --episodes 20
-```
-
----
-
-### Workflow 4: Hyperparameter Search
-
-```bash
-# Test different learning rates
-for lr in 1e-4 3e-4 1e-3; do
-    python scripts/train_pilot.py \
-        --algorithm PPO \
-        --learning-rate $lr \
-        --total-timesteps 200000 \
-        --model-dir models/lr_${lr}/
-done
-
-# Evaluate each
-for lr in 1e-4 3e-4 1e-3; do
-    python scripts/evaluate.py \
-        --model models/lr_${lr}/PPO_default_final.zip \
-        --episodes 10 \
-        --output results/lr_${lr}/
-done
-```
-
----
-
-### Workflow 5: Full Training Pipeline
-
-Complete end-to-end training:
+Crear archivo `evaluate_all.sh`:
 
 ```bash
 #!/bin/bash
 
-# Stage 1: Basic training
-echo "Stage 1: Basic training on oval..."
-python scripts/train_pilot.py \
-    --track tracks/oval.json \
-    --total-timesteps 200000 \
-    --model-dir models/stage1/
+# Configuración
+EPISODES=20
+OUTPUT_BASE="results/batch_eval"
+TRACKS=("tracks/oval.json" "tracks/monza.json" "tracks/technical.json")
 
-# Stage 2: Intermediate track
-echo "Stage 2: Transfer to simple circuit..."
-python scripts/train_pilot.py \
-    --track tracks/simple.json \
-    --total-timesteps 300000 \
-    --load-model models/stage1/PPO_oval_final.zip \
-    --model-dir models/stage2/
+# Crear directorio de salida
+mkdir -p "$OUTPUT_BASE"
 
-# Stage 3: Advanced track
-echo "Stage 3: Transfer to technical circuit..."
-python scripts/train_pilot.py \
-    --track tracks/technical.json \
-    --total-timesteps 400000 \
-    --load-model models/stage2/PPO_simple_final.zip \
-    --model-dir models/stage3/
+# Evaluar cada modelo
+for model in trained_models/*.zip; do
+    model_name=$(basename "$model" .zip)
+    echo "Evaluando: $model_name"
 
-# Stage 4: Multi-track generalization
-echo "Stage 4: Multi-track training..."
-python scripts/train_pilot.py \
-    --multi-track \
-    --total-timesteps 1000000 \
-    --load-model models/stage3/PPO_technical_final.zip \
-    --model-dir models/final/
+    # Evaluar en cada circuito
+    for track in "${TRACKS[@]}"; do
+        track_name=$(basename "$track" .json)
+        output_dir="$OUTPUT_BASE/${model_name}/${track_name}"
 
-# Evaluation
-echo "Final evaluation..."
+        python scripts/evaluate.py \
+            --model "$model" \
+            --track "$track" \
+            --episodes "$EPISODES" \
+            --output "$output_dir"
+    done
+done
+
+echo "Evaluación completa! Resultados en: $OUTPUT_BASE"
+```
+
+**Ejecutar:**
+```bash
+chmod +x evaluate_all.sh
+./evaluate_all.sh
+```
+
+### Comparar Todos los Algoritmos
+
+```bash
+#!/bin/bash
+
+# Comparar PPO vs SAC vs TD3
+TRACK="tracks/monza.json"
+EPISODES=20
+
+# Entrenar cada algoritmo
+for algo in PPO SAC TD3; do
+    python scripts/train_pilot.py \
+        --algorithm "$algo" \
+        --track "$TRACK" \
+        --total-timesteps 500000 \
+        --model-dir "models/${algo}/"
+done
+
+# Evaluar cada uno
+for algo in PPO SAC TD3; do
+    python scripts/evaluate.py \
+        --model "models/${algo}/${algo}_monza_final.zip" \
+        --track "$TRACK" \
+        --episodes "$EPISODES" \
+        --output "results/${algo}/"
+done
+
+# Comparaciones directas
 python scripts/evaluate.py \
-    --model models/final/PPO_multi_final.zip \
-    --episodes 50 \
-    --output results/final/ \
-    --record
+    --model "models/PPO/PPO_monza_final.zip" \
+    --compare "models/SAC/SAC_monza_final.zip" \
+    --episodes "$EPISODES" \
+    --output "results/comparison_PPO_vs_SAC/"
 
-echo "Training complete! Check results/ for evaluation."
+python scripts/evaluate.py \
+    --model "models/SAC/SAC_monza_final.zip" \
+    --compare "models/TD3/TD3_monza_final.zip" \
+    --episodes "$EPISODES" \
+    --output "results/comparison_SAC_vs_TD3/"
+```
+
+### Generar Reporte de Comparación
+
+Python script `compare_all.py`:
+
+```python
+#!/usr/bin/env python3
+"""
+Compara todos los modelos y genera un reporte CSV.
+"""
+
+import json
+import csv
+from pathlib import Path
+from glob import glob
+
+results_dir = Path("results/batch_eval")
+output_file = "comparison_report.csv"
+
+# Recopilar métricas de todos los modelos
+all_results = []
+
+for json_file in glob(str(results_dir / "*/*/*.json")):
+    with open(json_file, 'r') as f:
+        data = json.load(f)
+
+        metrics = data['metrics']
+        all_results.append({
+            'model': data['model'],
+            'track': data['track'],
+            'completion_rate': metrics['completion_rate'],
+            'lap_time_mean': metrics['lap_time_mean'],
+            'lap_time_best': metrics['lap_time_best'],
+            'on_track_percentage': metrics['on_track_percentage'],
+            'off_track_count': metrics['off_track_count_total'],
+        })
+
+# Guardar a CSV
+with open(output_file, 'w', newline='') as f:
+    if all_results:
+        writer = csv.DictWriter(f, fieldnames=all_results[0].keys())
+        writer.writeheader()
+        writer.writerows(all_results)
+
+print(f"Reporte guardado: {output_file}")
+print(f"Total de evaluaciones: {len(all_results)}")
+```
+
+**Ejecutar:**
+```bash
+python compare_all.py
 ```
 
 ---
 
-## Monitoring & Debugging
+## 📚 Documentación Completa
 
-### TensorBoard
+### Guías de Entrenamiento
 
-Monitor training in real-time:
+- **[TRAIN_PILOT.md](TRAIN_PILOT.md)** - Entrenamiento completo del piloto
+  - Comparación detallada PPO vs SAC vs TD3
+  - Hyperparámetros y configuración
+  - Curriculum learning
+  - Transfer learning
+  - Workflows completos
+
+- **[TRAIN_ENGINEER.md](TRAIN_ENGINEER.md)** - Entrenamiento del ingeniero
+  - Estrategia de pit stops
+  - Gestión de neumáticos
+  - DQN para decisiones discretas
+
+### Guías de Evaluación
+
+- **[../docs/EVALUATION_GUIDE.md](../docs/EVALUATION_GUIDE.md)** - Evaluación detallada
+  - Métricas completas
+  - Visualizaciones
+  - Comparación de modelos
+  - Grabación de videos
+
+### Documentación Adicional
+
+- **[../docs/CURRICULUM_LEARNING.md](../docs/CURRICULUM_LEARNING.md)** - Curriculum learning
+- **[../tracks/README.md](../tracks/README.md)** - Creación de circuitos
+- **[../README.md](../README.md)** - Documentación principal del proyecto
+
+---
+
+## 💡 Tips
+
+1. **Empieza con PPO** - Es el más estable y fácil de usar
+2. **Usa curriculum learning** - Para mejor generalización (`--curriculum`)
+3. **Monitorea con TensorBoard** - `tensorboard --logdir logs/`
+4. **Guarda checkpoints frecuentes** - Ya configurado por defecto
+5. **Evalúa regularmente** - Usa `evaluate.py` para tracking
+6. **Compara algoritmos** - Prueba PPO, SAC y TD3 para encontrar el mejor
+7. **CPU es suficiente** - Óptimo para RL con entornos paralelos
+
+---
+
+## ⚡ Comandos Rápidos
 
 ```bash
-# Start TensorBoard
+# Entrenar piloto (PPO, curriculum)
+python scripts/train_pilot.py --curriculum --total-timesteps 1000000
+
+# Entrenar piloto (SAC, circuito específico)
+python scripts/train_pilot.py --algorithm SAC --track tracks/monza.json --total-timesteps 500000
+
+# Entrenar ingeniero
+python scripts/train_engineer.py --track monza --timesteps 500000
+
+# Evaluar modelo
+python scripts/evaluate.py --model trained_models/PPO_final.zip --episodes 20
+
+# Comparar modelos
+python scripts/evaluate.py --model MODEL1.zip --compare MODEL2.zip --episodes 10
+
+# Ver TensorBoard
 tensorboard --logdir logs/
-
-# Open browser: http://localhost:6006
-```
-
-**Key Metrics to Watch:**
-
-1. **rollout/ep_rew_mean**: Episode reward (should increase)
-2. **f1/lap_time_best**: Best lap time (should decrease)
-3. **f1/on_track_percentage**: Time on track (should approach 100%)
-4. **f1/laps_completed_mean**: Laps per episode (should increase)
-5. **train/loss**: Training loss (should stabilize)
-
-### Common Issues
-
-#### Training is Slow
-
-```bash
-# Reduce environments
---n-envs 4
-
-# Or increase if CPU underutilized
---n-envs 16
-```
-
-**Note:** CPU is optimal for RL. GPU can be tested with `--device cuda` but usually slower.
-
-#### Agent Not Learning
-
-```bash
-# Try lower learning rate
---learning-rate 1e-4
-
-# More training time
---total-timesteps 1000000
-
-# Different algorithm
---algorithm SAC
-
-# Easier track
---difficulty 0
-# Or use curriculum
---curriculum
-```
-
-#### Agent Crashes Frequently
-
-- Train longer on easier tracks first
-- Use curriculum learning
-- Check reward function (may need adjustment)
-
-#### Memory Issues
-
-```bash
-# Reduce environments
---n-envs 4
-
-# Reduce batch size
---batch-size 32
-
-# CPU uses less memory than GPU (already default)
-```
-
-### Quick Debug Run
-
-```bash
-# Minimal test (fast)
-python scripts/train_pilot.py \
-    --total-timesteps 10000 \
-    --n-envs 2 \
-    --checkpoint-freq 5000 \
-    --eval-freq 2000
 ```
 
 ---
 
-## Output Files
-
-### Training Outputs
-
-```
-trained_models/
-├── PPO_checkpoint_50000_steps.zip    # Checkpoint at 50k
-├── PPO_checkpoint_100000_steps.zip   # Checkpoint at 100k
-├── best_model.zip                     # Best eval performance
-└── PPO_default_final.zip              # Final model
-
-logs/
-└── PPO_1/
-    └── events.out.tfevents.*          # TensorBoard logs
-```
-
-### Evaluation Outputs
-
-```
-results/
-├── PPO_default_evaluation.json        # Metrics JSON
-├── PPO_default_plots.png              # Visualization plots
-├── PPO_default_recording.mp4          # Video (if --record)
-└── comparison.json                    # Model comparison (if --compare)
-```
-
----
-
-## Tips for Best Results
-
-1. **Start Simple**: Begin with oval track (difficulty 0) or use `--curriculum`
-2. **Use PPO First**: Most stable and reliable for beginners
-3. **Monitor Training**: Watch TensorBoard to detect issues early
-4. **Save Checkpoints**: Keep multiple checkpoints (default: every 50k steps)
-5. **Evaluate Often**: Use eval callback to track progress
-6. **Transfer Learning**: Load previous models when changing tracks
-7. **Parallel Environments**: Use 8-16 envs for good speed/resource balance
-8. **Be Patient**: Good policies need 500k-1M timesteps
-9. **Curriculum Learning**: Use for best generalization across tracks
-10. **Compare Algorithms**: Try PPO, SAC, and TD3 to see what works best
-
----
-
-## Algorithm Selection Guide
-
-| Scenario | Recommended Algorithm | Why |
-|----------|----------------------|-----|
-| First time training | **PPO** | Most stable, easy to tune |
-| Simple/oval track | **PPO** | Efficient for simple tasks |
-| Complex technical track | **SAC** | Better exploration |
-| Need fast convergence | **SAC** | Off-policy learning |
-| Deterministic control | **TD3** | Predictable behavior |
-| Limited resources | **PPO** | Lower memory usage |
-| Time trials | **TD3** or **SAC** | Precision control |
-| Multi-track generalization | **PPO** + curriculum | Stable across conditions |
-
----
-
-## Additional Documentation
-
-- 📖 [Curriculum Learning Guide](../docs/CURRICULUM_LEARNING.md) - Progressive difficulty training
-- 📊 [Evaluation Guide](../docs/EVALUATION_GUIDE.md) - Complete evaluation documentation
-- 🏁 [Track Creation Guide](../tracks/README.md) - Create custom tracks
-- 📚 [Main README](../README.md) - Project overview
-
----
-
-## Quick Reference
-
-### train_pilot.py
-
-```bash
-python scripts/train_pilot.py \
-    --algorithm {PPO,SAC,TD3} \
-    --total-timesteps N \
-    --track PATH \
-    --n-envs N \
-    --learning-rate LR \
-    --batch-size N \
-    --curriculum \
-    --load-model PATH
-```
-
-### train_engineer.py
-
-```bash
-python scripts/train_engineer.py \
-    --track NAME \
-    --timesteps N \
-    --learning-rate LR \
-    --save-freq N
-```
-
-### evaluate.py
-
-```bash
-python scripts/evaluate.py \
-    --model PATH \
-    --track PATH \
-    --episodes N \
-    --compare PATH \
-    --render \
-    --record
-```
-
----
-
-**Happy Training! 🏎️💨**
+**Para más detalles, consulta las guías específicas de cada script.**

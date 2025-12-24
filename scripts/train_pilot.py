@@ -156,7 +156,8 @@ def create_vec_env(
     seed: int = 0,
     max_laps: int = 3,
     use_curriculum: bool = False,
-    curriculum_level: int = 0
+    curriculum_level: int = 0,
+    force_dummy: bool = False
 ) -> SubprocVecEnv:
     """
     Create vectorized environments for parallel training.
@@ -168,6 +169,7 @@ def create_vec_env(
         max_laps: Maximum laps per episode
         use_curriculum: Whether to use curriculum learning
         curriculum_level: Initial curriculum level (0-3)
+        force_dummy: Force DummyVecEnv (for eval envs to match type)
 
     Returns:
         Vectorized environment
@@ -189,8 +191,8 @@ def create_vec_env(
             curriculum_level=curriculum_level
         ))
 
-    # Use SubprocVecEnv for true parallelization
-    if n_envs > 1:
+    # Use SubprocVecEnv for true parallelization, DummyVecEnv for single env or when forced
+    if n_envs > 1 and not force_dummy:
         vec_env = SubprocVecEnv(env_fns)
     else:
         vec_env = DummyVecEnv(env_fns)
@@ -496,7 +498,8 @@ def main():
         seed=args.seed + 1000,
         max_laps=args.max_laps,
         use_curriculum=False,  # Don't use curriculum for evaluation
-        curriculum_level=0
+        curriculum_level=0,
+        force_dummy=True  # Always use DummyVecEnv for eval (avoids type mismatch warning)
     )
     print(f"✓ Created evaluation environment")
 

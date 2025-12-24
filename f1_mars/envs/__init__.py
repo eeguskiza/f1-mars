@@ -5,6 +5,7 @@ from f1_mars.envs.car import Car
 from f1_mars.envs.track import Track, TrackGenerator
 from f1_mars.envs.tyres import TyreSet, TyreCompound, TyreStrategy
 from f1_mars.envs.pit_wrapper import PitStopWrapper
+from f1_mars.envs.curriculum_wrapper import CurriculumWrapper, wrap_with_curriculum
 
 __all__ = [
     "F1Env",
@@ -15,4 +16,6 @@ __all__ = [
     "TyreCompound",
     "TyreStrategy",
     "PitStopWrapper",
+    "CurriculumWrapper",
+    "wrap_with_curriculum",
 ]

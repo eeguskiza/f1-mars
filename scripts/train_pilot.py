@@ -27,7 +27,7 @@ from stable_baselines3.common.monitor import Monitor
 
 # F1-MARS imports
 sys.path.insert(0, '.')
-from f1_mars.envs import F1Env
+from f1_mars.envs import F1Env, CurriculumWrapper
 from tracks import list_available_tracks, get_tracks_by_difficulty, TRACKS_DIR
 
 
@@ -115,7 +115,9 @@ def make_env(
     track_path: Optional[str] = None,
     rank: int = 0,
     seed: int = 0,
-    max_laps: int = 3
+    max_laps: int = 3,
+    use_curriculum: bool = False,
+    curriculum_level: int = 0
 ) -> Callable:
     """
     Create a function that returns a monitored F1Env.
@@ -125,12 +127,23 @@ def make_env(
         rank: Index of the environment
         seed: Random seed
         max_laps: Maximum laps per episode
+        use_curriculum: Whether to wrap with curriculum learning
+        curriculum_level: Initial curriculum level (0-3)
 
     Returns:
         Function that creates the environment
     """
     def _init():
         env = F1Env(track_path=track_path, max_laps=max_laps)
+
+        # Wrap with curriculum if enabled
+        if use_curriculum:
+            env = CurriculumWrapper(
+                env,
+                initial_level=curriculum_level,
+                enable_logging=(rank == 0)  # Only log in first env
+            )
+
         env = Monitor(env)
         env.reset(seed=seed + rank)
         return env
@@ -141,7 +154,9 @@ def create_vec_env(
     n_envs: int,
     track_paths: Optional[List[str]] = None,
     seed: int = 0,
-    max_laps: int = 3
+    max_laps: int = 3,
+    use_curriculum: bool = False,
+    curriculum_level: int = 0
 ) -> SubprocVecEnv:
     """
     Create vectorized environments for parallel training.
@@ -151,6 +166,8 @@ def create_vec_env(
         track_paths: List of track paths (cycles through if multi-track)
         seed: Random seed
         max_laps: Maximum laps per episode
+        use_curriculum: Whether to use curriculum learning
+        curriculum_level: Initial curriculum level (0-3)
 
     Returns:
         Vectorized environment
@@ -163,7 +180,14 @@ def create_vec_env(
     for i in range(n_envs):
         # Cycle through tracks if multi-track training
         track_path = track_paths[i % len(track_paths)]
-        env_fns.append(make_env(track_path, rank=i, seed=seed, max_laps=max_laps))
+        env_fns.append(make_env(
+            track_path,
+            rank=i,
+            seed=seed,
+            max_laps=max_laps,
+            use_curriculum=use_curriculum,
+            curriculum_level=curriculum_level
+        ))
 
     # Use SubprocVecEnv for true parallelization
     if n_envs > 1:
@@ -236,6 +260,20 @@ def parse_args():
         help="Use tracks of specific difficulty (0-3)"
     )
 
+    # Curriculum learning settings
+    parser.add_argument(
+        "--curriculum",
+        action="store_true",
+        help="Enable curriculum learning (progressive difficulty)"
+    )
+    parser.add_argument(
+        "--curriculum-level",
+        type=int,
+        default=0,
+        choices=[0, 1, 2, 3],
+        help="Initial curriculum level (0=Basic, 3=Expert)"
+    )
+
     # Callbacks and logging
     parser.add_argument(
         "--checkpoint-freq",
@@ -286,7 +324,7 @@ def parse_args():
     parser.add_argument(
         "--device",
         type=str,
-        default="auto",
+        default="cpu",
         choices=["auto", "cuda", "cpu"],
         help="Device to use for training"
     )
@@ -421,6 +459,14 @@ def main():
     else:
         print(f"Track:            Default oval")
 
+    # Curriculum learning info
+    if args.curriculum:
+        level_names = ["Basic", "Intermediate", "Advanced", "Expert"]
+        print(f"\nCurriculum:       ENABLED (starting at level {args.curriculum_level}: {level_names[args.curriculum_level]})")
+        print(f"                  Will automatically progress through difficulty levels")
+    else:
+        print(f"\nCurriculum:       Disabled")
+
     print(f"\nCheckpoint freq:  Every {args.checkpoint_freq:,} steps")
     print(f"Eval freq:        Every {args.eval_freq:,} steps")
     print(f"Model directory:  {args.model_dir}")
@@ -433,9 +479,13 @@ def main():
         n_envs=args.n_envs,
         track_paths=track_paths,
         seed=args.seed,
-        max_laps=args.max_laps
+        max_laps=args.max_laps,
+        use_curriculum=args.curriculum,
+        curriculum_level=args.curriculum_level
     )
     print(f"✓ Created {args.n_envs} parallel environments")
+    if args.curriculum:
+        print(f"  Curriculum learning enabled (level {args.curriculum_level})")
 
     # Create evaluation environment (single env, first track)
     print("Creating evaluation environment...")
@@ -444,7 +494,9 @@ def main():
         n_envs=1,
         track_paths=[eval_track],
         seed=args.seed + 1000,
-        max_laps=args.max_laps
+        max_laps=args.max_laps,
+        use_curriculum=False,  # Don't use curriculum for evaluation
+        curriculum_level=0
     )
     print(f"✓ Created evaluation environment")
 

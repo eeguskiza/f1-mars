@@ -178,12 +178,11 @@ python scripts/train_pilot.py \
     --n-envs 32 \
     --batch-size 256 \
     --learning-rate 3e-4 \
-    --device cuda \
     --checkpoint-freq 100000 \
     --eval-freq 20000
 ```
 
-Uses 32 parallel environments and GPU acceleration for faster training.
+Uses 32 parallel environments for faster training. CPU is the default device (optimal for RL with parallel environments).
 
 ### Debugging / Quick Test
 
@@ -279,7 +278,7 @@ Open http://localhost:6006 to view:
 ### Training is Slow
 - Reduce `--n-envs` if CPU is bottleneck
 - Increase `--n-envs` if CPU has spare cores
-- Use `--device cuda` if GPU available
+- CPU is optimal for RL (GPU can be tested with `--device cuda` but usually slower due to transfer overhead)
 
 ### Agent Not Learning
 - Reduce learning rate: `--learning-rate 1e-4`
@@ -295,7 +294,7 @@ Open http://localhost:6006 to view:
 ### Memory Issues
 - Reduce `--n-envs`
 - Reduce `--batch-size`
-- Use `--device cpu` instead of cuda
+- CPU is already the default (uses less memory than GPU)
 
 ## File Outputs
 

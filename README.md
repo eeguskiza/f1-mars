@@ -58,18 +58,41 @@ Train an RL agent to race autonomously:
 # Basic training (oval track, PPO)
 python scripts/train_pilot.py --total-timesteps 500000
 
-# Multi-track curriculum learning
-python scripts/train_pilot.py --multi-track --total-timesteps 1000000
+# Curriculum learning (progressive difficulty)
+python scripts/train_pilot.py --curriculum --total-timesteps 1000000
 
 # Advanced: SAC with 16 parallel environments
-python scripts/train_pilot.py --algorithm SAC --n-envs 16 --device cuda
+python scripts/train_pilot.py --algorithm SAC --n-envs 16
 ```
 
 **📖 Full Training Guide:** [scripts/TRAINING_GUIDE.md](scripts/TRAINING_GUIDE.md)
 - Algorithm comparison (PPO vs SAC vs TD3)
-- Curriculum learning workflow
+- [Curriculum learning](docs/CURRICULUM_LEARNING.md) - Progressive difficulty training
 - Hyperparameter tuning
 - Multi-track training strategies
+
+## Evaluation
+
+Evaluate trained models with comprehensive metrics and visualizations:
+
+```bash
+# Basic evaluation
+python scripts/evaluate.py --model trained_models/PPO_default_final.zip
+
+# Compare two models
+python scripts/evaluate.py \
+    --model trained_models/PPO_v1.zip \
+    --compare trained_models/SAC_v1.zip
+
+# Record video
+python scripts/evaluate.py --model MODEL --record
+```
+
+**📊 Evaluation Guide:** [docs/EVALUATION_GUIDE.md](docs/EVALUATION_GUIDE.md)
+- Complete metrics (lap times, completion rate, tyre wear, etc.)
+- Visualization plots (trajectory, lap time distribution, etc.)
+- Model comparison
+- Video recording
 
 ## Tracks
 

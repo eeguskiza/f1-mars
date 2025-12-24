@@ -6,6 +6,7 @@ scipy>=1.11.0
 
 # Reinforcement Learning
 stable-baselines3>=2.1.0
+stable-baselines3[extra]
 tensorboard>=2.14.0
 
 # Testing

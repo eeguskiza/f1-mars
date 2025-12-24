@@ -40,6 +40,13 @@ def main():
         action="store_true",
         help="Enable TensorBoard logging"
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cpu",
+        choices=["auto", "cuda", "cpu"],
+        help="Device to use for training"
+    )
 
     args = parser.parse_args()
 
@@ -65,6 +72,7 @@ def main():
         env,
         learning_rate=args.learning_rate,
         tensorboard_log=tensorboard_log,
+        device=args.device,
     )
 
     # Create callback

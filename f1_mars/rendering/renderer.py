@@ -215,3 +215,326 @@ class Renderer:
     def close(self):
         """Clean up PyGame resources."""
         pygame.quit()
+
+
+class F1Renderer:
+    """
+    Renderizador principal con PyGame (Phase 3 enhanced version).
+
+    Features:
+    - Cámara que sigue al coche
+    - Renderizado del circuito
+    - HUD con telemetría
+    - Zoom ajustable
+    """
+
+    def __init__(self,
+                 width: int = 1280,
+                 height: int = 720,
+                 title: str = "F1-MARS Racing Simulator"):
+        """
+        Inicializa el renderizador.
+
+        Args:
+            width: Ancho de la ventana
+            height: Alto de la ventana
+            title: Título de la ventana
+        """
+        pygame.init()
+        pygame.display.set_caption(title)
+
+        self.width = width
+        self.height = height
+        self.screen = pygame.display.set_mode((width, height))
+        self.clock = pygame.time.Clock()
+
+        # Cámara
+        self.camera_x = 0
+        self.camera_y = 0
+        self.zoom = 5.0  # Píxeles por metro (más cerca del coche)
+        self.camera_smoothing = 0.1  # Suavizado de cámara
+
+        # Sprites y efectos mejorados
+        from .sprites import CarSprite, SpeedLines, TrackRenderer
+        self.car_sprite = CarSprite(scale=0.4)  # Coche más pequeño para proporciones realistas (F1 real ~5m largo)
+        self.speed_lines = SpeedLines(width, height)
+        self.track_renderer = TrackRenderer()
+
+        # HUD
+        self.hud = HUD(width, height)
+
+        # Estado
+        self.running = True
+        self.paused = False
+        self.show_hud = True
+        self.show_trajectory = False
+
+        # Historial de posiciones (para dibujar trayectoria)
+        self.trajectory: list = []
+        self.max_trajectory_points = 500
+
+    def handle_events(self) -> dict:
+        """
+        Procesa eventos de PyGame.
+
+        Returns:
+            Dict con acciones del usuario:
+                - quit: bool
+                - pause: bool
+                - zoom_in: bool
+                - zoom_out: bool
+                - reset: bool
+        """
+        actions = {
+            'quit': False,
+            'pause': False,
+            'zoom_in': False,
+            'zoom_out': False,
+            'reset': False,
+            'toggle_hud': False,
+            'toggle_trajectory': False
+        }
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                actions['quit'] = True
+                self.running = False
+
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    actions['quit'] = True
+                    self.running = False
+                elif event.key == pygame.K_SPACE:
+                    actions['pause'] = True
+                    self.paused = not self.paused
+                elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
+                    actions['zoom_in'] = True
+                    self.zoom = min(10.0, self.zoom * 1.2)
+                elif event.key == pygame.K_MINUS:
+                    actions['zoom_out'] = True
+                    self.zoom = max(0.5, self.zoom / 1.2)
+                elif event.key == pygame.K_r:
+                    actions['reset'] = True
+                elif event.key == pygame.K_h:
+                    actions['toggle_hud'] = True
+                    self.show_hud = not self.show_hud
+                elif event.key == pygame.K_t:
+                    actions['toggle_trajectory'] = True
+                    self.show_trajectory = not self.show_trajectory
+
+        return actions
+
+    def update_camera(self, target_x: float, target_y: float, velocity: float = 0):
+        """
+        Cámara dinámica que responde a velocidad.
+
+        Args:
+            target_x: Posición X del objetivo
+            target_y: Posición Y del objetivo
+            velocity: Velocidad del coche (m/s)
+        """
+        # Suavizado base
+        smooth = 0.1
+
+        # Zoom FIJO - no cambia automáticamente, solo con +/-
+        # (el zoom se mantiene en self.zoom, modificable solo por el usuario)
+
+        # Actualizar posición
+        self.camera_x += (target_x - self.camera_x) * smooth
+        self.camera_y += (target_y - self.camera_y) * smooth
+
+    def world_to_screen(self, x: float, y: float) -> tuple:
+        """Convierte coordenadas del mundo a coordenadas de pantalla."""
+        screen_x = int((x - self.camera_x) * self.zoom + self.width // 2)
+        screen_y = int((y - self.camera_y) * self.zoom + self.height // 2)
+        return screen_x, screen_y
+
+    def render(self,
+               car_state: dict,
+               track_data: dict,
+               telemetry: dict):
+        """
+        Renderiza un frame completo con efectos visuales.
+
+        Args:
+            car_state: Estado del coche
+                - x, y: Posición
+                - heading: Ángulo
+                - velocity: Velocidad
+            track_data: Datos del circuito
+                - centerline: Lista de puntos
+                - width: Ancho de pista
+                - checkpoints: Índices de checkpoints
+            telemetry: Datos para el HUD
+        """
+        from .colors import TRACK_GRASS
+
+        # 1. Limpiar pantalla (hierba)
+        self.screen.fill(TRACK_GRASS)
+
+        # Obtener velocidad
+        velocity = car_state.get('velocity', 0)
+
+        # 2. Actualizar cámara dinámica
+        self.update_camera(car_state['x'], car_state['y'], velocity)
+
+        # 3. Dibujar circuito con kerbs y detalles
+        self.track_renderer.draw_track(
+            self.screen,
+            track_data['centerline'],
+            track_data['width'],
+            self.world_to_screen,
+            self.zoom
+        )
+
+        # 4. Speed lines (detrás del coche)
+        if velocity > 50:
+            self.speed_lines.update(velocity)
+            self.speed_lines.draw(self.screen)
+
+        # 5. Trail del coche
+        self.car_sprite.update_trail(car_state['x'], car_state['y'], velocity)
+        self.car_sprite.draw_trail(self.screen, self.world_to_screen)
+
+        # 6. Dibujar trayectoria (si está activada)
+        if self.show_trajectory:
+            self._draw_trajectory()
+
+        # 7. Dibujar coche mejorado
+        screen_x, screen_y = self.world_to_screen(car_state['x'], car_state['y'])
+        rotated_car = self.car_sprite.get_rotated(car_state['heading'])
+        rect = rotated_car.get_rect(center=(screen_x, screen_y))
+        self.screen.blit(rotated_car, rect)
+
+        # 8. Dibujar HUD
+        if self.show_hud:
+            self.hud.draw(self.screen, telemetry)
+
+        # 9. Indicador de pausa
+        if self.paused:
+            self._draw_pause_overlay()
+
+        # 10. Actualizar display
+        pygame.display.flip()
+
+    def _draw_track(self, track_data: dict):
+        """Dibuja el circuito."""
+        from .colors import TRACK_ASPHALT, TRACK_BORDER, GRAY, WHITE
+        from .sprites import draw_start_finish_line
+
+        centerline = track_data.get('centerline', [])
+        width = track_data.get('width', 12.0)
+
+        if len(centerline) < 2:
+            return
+
+        # Convertir puntos a coordenadas de pantalla
+        screen_points = [self.world_to_screen(p[0], p[1]) for p in centerline]
+
+        # Dibujar asfalto (línea gruesa)
+        track_width = int(width * self.zoom)
+        if track_width > 0 and len(screen_points) >= 2:
+            # Dibujar borde exterior
+            pygame.draw.lines(self.screen, TRACK_BORDER, True, screen_points,
+                            track_width + 4)
+            # Dibujar asfalto
+            pygame.draw.lines(self.screen, TRACK_ASPHALT, True, screen_points,
+                            track_width)
+            # Dibujar línea central (guía)
+            pygame.draw.lines(self.screen, GRAY, True, screen_points, 1)
+
+        # Línea de meta
+        if centerline:
+            start_pos = centerline[0]
+            # Calcular dirección
+            if len(centerline) > 1:
+                dx = centerline[1][0] - centerline[0][0]
+                dy = centerline[1][1] - centerline[0][1]
+                direction = np.arctan2(dy, dx)
+            else:
+                direction = 0
+
+            draw_start_finish_line(
+                self.screen, start_pos, direction, width,
+                (self.camera_x, self.camera_y), self.zoom
+            )
+
+    def _draw_car(self, car_state: dict):
+        """Dibuja el coche."""
+        x, y = car_state['x'], car_state['y']
+        heading = car_state['heading']
+
+        # Convertir a coordenadas de pantalla
+        screen_x, screen_y = self.world_to_screen(x, y)
+
+        # Rotar sprite
+        # PyGame usa grados, heading está en radianes
+        angle_degrees = -np.degrees(heading)  # Negativo porque PyGame Y está invertido
+        rotated_car = pygame.transform.rotate(self.car_sprite, angle_degrees)
+
+        # Centrar sprite
+        rect = rotated_car.get_rect(center=(screen_x, screen_y))
+
+        # Dibujar
+        self.screen.blit(rotated_car, rect)
+
+    def _draw_trajectory(self):
+        """Dibuja la trayectoria recorrida."""
+        from .colors import F1_RED
+
+        if len(self.trajectory) < 2:
+            return
+
+        screen_points = [self.world_to_screen(p[0], p[1]) for p in self.trajectory]
+        pygame.draw.lines(self.screen, (*F1_RED, 128), False, screen_points, 2)
+
+    def _draw_pause_overlay(self):
+        """Dibuja overlay de pausa."""
+        from .colors import WHITE, GRAY
+
+        # Semi-transparente
+        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))
+        self.screen.blit(overlay, (0, 0))
+
+        # Texto
+        font = pygame.font.Font(None, 72)
+        text = font.render("PAUSED", True, WHITE)
+        text_rect = text.get_rect(center=(self.width // 2, self.height // 2))
+        self.screen.blit(text, text_rect)
+
+        # Instrucciones
+        font_small = pygame.font.Font(None, 36)
+        instructions = [
+            "SPACE - Resume",
+            "R - Reset",
+            "H - Toggle HUD",
+            "T - Toggle Trajectory",
+            "+/- - Zoom",
+            "ESC - Quit"
+        ]
+        for i, instruction in enumerate(instructions):
+            inst_text = font_small.render(instruction, True, GRAY)
+            inst_rect = inst_text.get_rect(center=(self.width // 2,
+                                                   self.height // 2 + 60 + i * 30))
+            self.screen.blit(inst_text, inst_rect)
+
+    def tick(self, fps: int = 60) -> float:
+        """
+        Limita FPS y retorna delta time.
+
+        Args:
+            fps: Frames por segundo objetivo
+
+        Returns:
+            Delta time en segundos
+        """
+        return self.clock.tick(fps) / 1000.0
+
+    def close(self):
+        """Cierra PyGame."""
+        pygame.quit()
+
+    def show_engineer_message(self, message: str, duration: int = 180):
+        """Muestra mensaje del ingeniero en el HUD."""
+        self.hud.show_engineer_message(message, duration)

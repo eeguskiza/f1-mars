@@ -639,3 +639,30 @@ class F1Env(gym.Env):
             'on_track': self.track.is_on_track(self.car.position),
             'off_track_frames': self.off_track_frames,
         }
+
+    @property
+    def render_data(self) -> dict:
+        """Retorna datos necesarios para renderizado."""
+        return {
+            'car': {
+                'x': self.car.position[0],
+                'y': self.car.position[1],
+                'heading': self.car.heading,
+                'velocity': self.car.velocity,
+            },
+            'track': {
+                'centerline': self.track.control_points,
+                'width': float(np.mean(self.track.widths)),
+            },
+            'telemetry': {
+                'velocity': self.car.velocity,
+                'lap': self.current_lap,
+                'total_laps': self.max_laps,
+                'lap_time': self.total_time - self.lap_start_time,
+                'best_lap_time': None,  # Not tracked in basic env
+                'tyre_compound': self.tyres.compound.name,
+                'tyre_wear': self.tyres.wear,
+                'tyre_temp': self.tyres.temperature,
+                'on_track': self.track.is_on_track(self.car.position),
+            }
+        }

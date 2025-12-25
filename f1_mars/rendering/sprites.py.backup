@@ -1,0 +1,153 @@
+"""Sprites y elementos visuales."""
+
+import pygame
+import numpy as np
+from typing import Tuple
+from .colors import *
+
+
+def create_car_sprite(width: int = 40, height: int = 20) -> pygame.Surface:
+    """
+    Crea sprite del coche F1 (vista cenital).
+
+    Args:
+        width: Ancho del sprite en píxeles
+        height: Alto del sprite en píxeles
+
+    Returns:
+        pygame.Surface con el coche dibujado
+    """
+    surface = pygame.Surface((width, height), pygame.SRCALPHA)
+
+    # Cuerpo principal (forma de F1 simplificada)
+    body_rect = pygame.Rect(5, 4, width - 10, height - 8)
+    pygame.draw.rect(surface, CAR_MAIN, body_rect, border_radius=3)
+
+    # Morro (frente del coche)
+    nose_points = [
+        (width - 5, height // 2),
+        (width - 15, 3),
+        (width - 15, height - 3)
+    ]
+    pygame.draw.polygon(surface, CAR_MAIN, nose_points)
+
+    # Alerón trasero
+    pygame.draw.rect(surface, CAR_ACCENT, (2, 2, 4, height - 4))
+
+    # Ruedas (4 esquinas)
+    wheel_color = DARK_GRAY
+    wheel_w, wheel_h = 6, 4
+    # Trasera izquierda
+    pygame.draw.rect(surface, wheel_color, (3, 0, wheel_w, wheel_h))
+    # Trasera derecha
+    pygame.draw.rect(surface, wheel_color, (3, height - wheel_h, wheel_w, wheel_h))
+    # Delantera izquierda
+    pygame.draw.rect(surface, wheel_color, (width - 12, 0, wheel_w, wheel_h))
+    # Delantera derecha
+    pygame.draw.rect(surface, wheel_color, (width - 12, height - wheel_h, wheel_w, wheel_h))
+
+    # Cockpit (habitáculo)
+    cockpit_rect = pygame.Rect(width // 2 - 5, height // 2 - 3, 10, 6)
+    pygame.draw.ellipse(surface, CAR_ACCENT, cockpit_rect)
+
+    # Número (opcional)
+    # pygame.draw.circle(surface, WHITE, (width // 3, height // 2), 4)
+
+    return surface
+
+
+def create_tyre_indicator(compound: str, wear: float, size: int = 30) -> pygame.Surface:
+    """
+    Crea indicador visual de neumático.
+
+    Args:
+        compound: 'SOFT', 'MEDIUM', 'HARD'
+        wear: Porcentaje de desgaste (0-100)
+        size: Tamaño del indicador
+
+    Returns:
+        pygame.Surface con el indicador
+    """
+    surface = pygame.Surface((size, size), pygame.SRCALPHA)
+
+    # Color según compuesto
+    colors = {
+        'SOFT': TYRE_SOFT,
+        'MEDIUM': TYRE_MEDIUM,
+        'HARD': TYRE_HARD
+    }
+    tyre_color = colors.get(compound.upper(), GRAY)
+
+    # Círculo exterior (neumático)
+    center = size // 2
+    radius = size // 2 - 2
+    pygame.draw.circle(surface, tyre_color, (center, center), radius)
+
+    # Círculo interior (llanta)
+    pygame.draw.circle(surface, DARK_GRAY, (center, center), radius // 2)
+
+    # Indicador de desgaste (arco)
+    if wear > 0:
+        wear_angle = (wear / 100) * 360
+        # Dibujar arco de desgaste
+        rect = pygame.Rect(2, 2, size - 4, size - 4)
+        pygame.draw.arc(surface, DANGER, rect,
+                       np.radians(90), np.radians(90 - wear_angle), 3)
+
+    return surface
+
+
+def draw_track_segment(surface: pygame.Surface,
+                       points: list,
+                       width: float,
+                       camera_offset: Tuple[float, float],
+                       scale: float):
+    """
+    Dibuja un segmento del circuito.
+
+    Args:
+        surface: Superficie donde dibujar
+        points: Lista de puntos de la línea central
+        width: Ancho de la pista
+        camera_offset: Offset de la cámara (x, y)
+        scale: Factor de escala
+    """
+    if len(points) < 2:
+        return
+
+    # Convertir puntos a coordenadas de pantalla
+    screen_points = []
+    for p in points:
+        x = (p[0] - camera_offset[0]) * scale + surface.get_width() // 2
+        y = (p[1] - camera_offset[1]) * scale + surface.get_height() // 2
+        screen_points.append((x, y))
+
+    # Dibujar pista (línea gruesa)
+    if len(screen_points) >= 2:
+        pygame.draw.lines(surface, TRACK_ASPHALT, False, screen_points,
+                         int(width * scale))
+
+        # Bordes
+        pygame.draw.lines(surface, TRACK_BORDER, False, screen_points,
+                         int(width * scale) + 4)
+
+
+def draw_start_finish_line(surface: pygame.Surface,
+                           position: Tuple[float, float],
+                           direction: float,
+                           width: float,
+                           camera_offset: Tuple[float, float],
+                           scale: float):
+    """Dibuja línea de meta."""
+    x = (position[0] - camera_offset[0]) * scale + surface.get_width() // 2
+    y = (position[1] - camera_offset[1]) * scale + surface.get_height() // 2
+
+    # Calcular perpendicular a la dirección
+    perp = direction + np.pi / 2
+    half_width = (width * scale) / 2
+
+    start = (x - np.cos(perp) * half_width, y - np.sin(perp) * half_width)
+    end = (x + np.cos(perp) * half_width, y + np.sin(perp) * half_width)
+
+    # Dibujar patrón de cuadros
+    pygame.draw.line(surface, WHITE, start, end, 4)

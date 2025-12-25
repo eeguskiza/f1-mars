@@ -1,0 +1,220 @@
+"""Head-Up Display con telemetría F1."""
+
+import pygame
+from typing import Dict, Any, Optional
+from .colors import *
+
+
+class HUD:
+    """
+    HUD estilo F1 con telemetría en tiempo real.
+
+    Muestra:
+    - Velocidad (km/h)
+    - Vuelta actual / total
+    - Tiempo de vuelta
+    - Estado de neumáticos
+    - Señales del ingeniero
+    - Mini-mapa (opcional)
+    """
+
+    def __init__(self, screen_width: int, screen_height: int):
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+
+        # Fuentes
+        pygame.font.init()
+        self.font_large = pygame.font.Font(None, 72)
+        self.font_medium = pygame.font.Font(None, 36)
+        self.font_small = pygame.font.Font(None, 24)
+
+        # Posiciones de elementos
+        self.speed_pos = (screen_width - 200, 30)
+        self.lap_pos = (screen_width // 2, 30)
+        self.tyre_pos = (50, screen_height - 100)
+        self.time_pos = (screen_width // 2, 80)
+        self.engineer_pos = (screen_width // 2, screen_height - 60)
+
+        # Estado del ingeniero (para Fase 5)
+        self.engineer_message = ""
+        self.engineer_message_timer = 0
+
+    def draw(self, surface: pygame.Surface, telemetry: Dict[str, Any]):
+        """
+        Dibuja el HUD completo.
+
+        Args:
+            surface: Superficie donde dibujar
+            telemetry: Diccionario con datos de telemetría
+                - velocity: float (m/s)
+                - lap: int
+                - total_laps: int
+                - lap_time: float (segundos)
+                - best_lap_time: float (segundos)
+                - tyre_compound: str
+                - tyre_wear: float (0-100)
+                - tyre_temp: float (°C)
+                - on_track: bool
+                - engineer_signal: int (para Fase 5)
+        """
+        self._draw_speed(surface, telemetry.get('velocity', 0))
+        self._draw_lap_counter(surface,
+                              telemetry.get('lap', 1),
+                              telemetry.get('total_laps', 3))
+        self._draw_lap_time(surface,
+                           telemetry.get('lap_time', 0),
+                           telemetry.get('best_lap_time', None))
+        self._draw_tyre_status(surface,
+                              telemetry.get('tyre_compound', 'MEDIUM'),
+                              telemetry.get('tyre_wear', 0),
+                              telemetry.get('tyre_temp', 90))
+        self._draw_track_status(surface, telemetry.get('on_track', True))
+        self._draw_engineer_message(surface)
+
+    def _draw_speed(self, surface: pygame.Surface, velocity: float):
+        """Dibuja velocímetro."""
+        # Convertir a km/h
+        speed_kmh = velocity * 3.6
+
+        # Fondo
+        bg_rect = pygame.Rect(self.speed_pos[0] - 10, self.speed_pos[1] - 5, 180, 80)
+        pygame.draw.rect(surface, (*DARK_GRAY, 200), bg_rect, border_radius=5)
+
+        # Velocidad
+        speed_text = self.font_large.render(f"{int(speed_kmh)}", True, WHITE)
+        surface.blit(speed_text, self.speed_pos)
+
+        # Unidad
+        unit_text = self.font_small.render("km/h", True, GRAY)
+        surface.blit(unit_text, (self.speed_pos[0] + 100, self.speed_pos[1] + 50))
+
+    def _draw_lap_counter(self, surface: pygame.Surface, lap: int, total: int):
+        """Dibuja contador de vueltas."""
+        # Fondo
+        bg_rect = pygame.Rect(self.lap_pos[0] - 60, self.lap_pos[1] - 5, 120, 45)
+        pygame.draw.rect(surface, (*DARK_GRAY, 200), bg_rect, border_radius=5)
+
+        # Texto
+        lap_text = self.font_medium.render(f"LAP {lap}/{total}", True, WHITE)
+        text_rect = lap_text.get_rect(center=(self.lap_pos[0], self.lap_pos[1] + 15))
+        surface.blit(lap_text, text_rect)
+
+    def _draw_lap_time(self, surface: pygame.Surface,
+                       lap_time: float,
+                       best_time: Optional[float]):
+        """Dibuja tiempo de vuelta."""
+        # Formato mm:ss.ms
+        minutes = int(lap_time // 60)
+        seconds = lap_time % 60
+        time_str = f"{minutes}:{seconds:05.2f}"
+
+        # Color según si es mejor tiempo
+        color = WHITE
+        if best_time and lap_time < best_time:
+            color = GOOD  # Verde si es mejor
+
+        time_text = self.font_medium.render(time_str, True, color)
+        text_rect = time_text.get_rect(center=(self.time_pos[0], self.time_pos[1]))
+        surface.blit(time_text, text_rect)
+
+        # Mejor tiempo
+        if best_time:
+            best_minutes = int(best_time // 60)
+            best_seconds = best_time % 60
+            best_str = f"BEST: {best_minutes}:{best_seconds:05.2f}"
+            best_text = self.font_small.render(best_str, True, GOOD)
+            best_rect = best_text.get_rect(center=(self.time_pos[0], self.time_pos[1] + 25))
+            surface.blit(best_text, best_rect)
+
+    def _draw_tyre_status(self, surface: pygame.Surface,
+                          compound: str, wear: float, temp: float):
+        """Dibuja estado de neumáticos."""
+        # Fondo
+        bg_rect = pygame.Rect(self.tyre_pos[0] - 10, self.tyre_pos[1] - 10, 200, 90)
+        pygame.draw.rect(surface, (*DARK_GRAY, 200), bg_rect, border_radius=5)
+
+        # Color del compuesto
+        compound_colors = {
+            'SOFT': TYRE_SOFT,
+            'MEDIUM': TYRE_MEDIUM,
+            'HARD': TYRE_HARD
+        }
+        color = compound_colors.get(compound.upper(), GRAY)
+
+        # Nombre del compuesto
+        compound_text = self.font_medium.render(compound.upper(), True, color)
+        surface.blit(compound_text, self.tyre_pos)
+
+        # Barra de desgaste
+        bar_x = self.tyre_pos[0]
+        bar_y = self.tyre_pos[1] + 35
+        bar_width = 150
+        bar_height = 15
+
+        # Fondo de la barra
+        pygame.draw.rect(surface, DARK_GRAY, (bar_x, bar_y, bar_width, bar_height))
+
+        # Barra de estado (100% - wear)
+        remaining = max(0, 100 - wear)
+        fill_width = int((remaining / 100) * bar_width)
+
+        # Color según nivel
+        if remaining > 50:
+            bar_color = GOOD
+        elif remaining > 30:
+            bar_color = WARNING
+        else:
+            bar_color = DANGER
+
+        pygame.draw.rect(surface, bar_color, (bar_x, bar_y, fill_width, bar_height))
+
+        # Texto de porcentaje
+        wear_text = self.font_small.render(f"{remaining:.0f}%", True, WHITE)
+        surface.blit(wear_text, (bar_x + bar_width + 10, bar_y))
+
+        # Temperatura
+        temp_color = GOOD if 80 <= temp <= 100 else WARNING if temp < 80 else DANGER
+        temp_text = self.font_small.render(f"{temp:.0f}°C", True, temp_color)
+        surface.blit(temp_text, (bar_x, bar_y + 20))
+
+    def _draw_track_status(self, surface: pygame.Surface, on_track: bool):
+        """Dibuja indicador de límites de pista."""
+        if not on_track:
+            # Warning de fuera de pista
+            warning_text = self.font_medium.render("⚠ TRACK LIMITS", True, DANGER)
+            text_rect = warning_text.get_rect(center=(self.screen_width // 2,
+                                                      self.screen_height // 2))
+            surface.blit(warning_text, text_rect)
+
+    def _draw_engineer_message(self, surface: pygame.Surface):
+        """Dibuja mensaje del ingeniero (para Fase 5)."""
+        if self.engineer_message and self.engineer_message_timer > 0:
+            # Fondo
+            bg_rect = pygame.Rect(self.engineer_pos[0] - 200,
+                                 self.engineer_pos[1] - 20, 400, 50)
+            pygame.draw.rect(surface, (*F1_RED, 220), bg_rect, border_radius=5)
+
+            # Texto
+            msg_text = self.font_medium.render(self.engineer_message, True, WHITE)
+            text_rect = msg_text.get_rect(center=self.engineer_pos)
+            surface.blit(msg_text, text_rect)
+
+            self.engineer_message_timer -= 1
+
+    def show_engineer_message(self, message: str, duration: int = 180):
+        """
+        Muestra un mensaje del ingeniero.
+
+        Args:
+            message: Texto a mostrar
+            duration: Frames que se muestra (60 = 1 segundo a 60fps)
+        """
+        self.engineer_message = message
+        self.engineer_message_timer = duration
+
+    def show_pit_signal(self, compound: str, laps_until_pit: int):
+        """Muestra señal de pit stop (para Fase 5)."""
+        if laps_until_pit <= 0:
+            self.show_engineer_message(f"BOX BOX BOX! → {compound}", 300)
+        elif laps_until_pit <= 2:
+            self.show_engineer_message(f"PIT IN {laps_until_pit} LAPS → {compound}", 180)

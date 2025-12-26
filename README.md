@@ -6,7 +6,7 @@ A reinforcement learning environment for training autonomous F1 racing agents us
 
 - **Authentic F1 Circuits**: 7 real F1 tracks from CSV racing line data (Budapest, Spa, Monza, Catalunya, Austin, Nürburgring, Yas Marina)
 - **Realistic Physics**: Tire wear, temperature degradation, fuel consumption, pit stops
-- **F1 TV-Style Visualization**: Broadcast-quality HUD with live telemetry, speed effects, dynamic camera
+- **F1 TV-Style Visualization**: GPU-accelerated Arcade rendering, broadcast-quality HUD, live telemetry, dynamic camera
 - **Multiple Algorithms**: PPO, SAC, TD3 support via Stable-Baselines3
 - **Optimized Performance**: Douglas-Peucker path simplification, 90%+ point reduction
 
@@ -22,11 +22,13 @@ f1_mars/
 │   │       ├── track.py       # Track geometry and boundaries
 │   │       ├── tyres.py       # Tire physics and degradation
 │   │       └── fuel.py        # Fuel consumption system
-│   ├── rendering/             # PyGame visualization
-│   │   ├── renderer.py        # Main renderer with camera system
+│   ├── rendering/             # Arcade GPU visualization
+│   │   ├── game_window.py    # Main Arcade window
+│   │   ├── camera.py         # Racing camera with smooth follow
+│   │   ├── car_sprite.py     # F1 car sprite with effects
+│   │   ├── track_renderer.py # GPU batch rendering
 │   │   ├── hud.py            # F1 TV broadcast-style HUD
-│   │   ├── sprites.py        # Car sprites and visual effects
-│   │   └── colors.py         # F1 color palette
+│   │   └── effects.py        # Particle effects system
 │   └── utils/                 # Utility functions
 ├── scripts/                   # Training and conversion tools
 │   ├── train_agent.py        # Main RL training script
@@ -67,23 +69,102 @@ pip install -e .
 
 ## Quick Start
 
-### 1. Convert F1 Circuit Data
+### 1. Train Your First Agent
 
-Place CSV files in `tracks/csv/` with format: `x_m,y_m,w_tr_right_m,w_tr_left_m`
+All circuits are ready to use. Start with the easiest circuit (Monza) or your favorite F1 track:
 
 ```bash
-# Convert all circuits at once
-for csv in tracks/csv/*.csv; do
-    python scripts/csv_to_track.py "$csv" --tolerance 3.5 --laps 5
-done
+# Easy: Monza - Wide track, high-speed (recommended for first training)
+python scripts/train_agent.py \
+    --track tracks/monza.json \
+    --algorithm PPO \
+    --timesteps 500000 \
+    --output trained_models/monza_ppo \
+    --eval-freq 10000
+
+# Medium: Budapest - Technical, tight corners
+python scripts/train_agent.py \
+    --track tracks/budapest.json \
+    --algorithm PPO \
+    --timesteps 500000 \
+    --output trained_models/budapest_ppo \
+    --eval-freq 10000
+
+# Hard: Spa - Longest circuit, varied challenges
+python scripts/train_agent.py \
+    --track tracks/spa.json \
+    --algorithm PPO \
+    --timesteps 800000 \
+    --output trained_models/spa_ppo \
+    --eval-freq 10000
+```
+
+**Training time:** 1-2 hours on CPU for 500k timesteps.
+
+### 2. Watch Your Agent Race
+
+Use the interactive viewer to select model and track:
+
+```bash
+# Interactive mode - Choose from available models
+python scripts/watch_agent.py
+```
+
+Or specify directly:
+
+```bash
+# Direct mode - Specify model and track
+python scripts/watch_agent.py \
+    --model trained_models/monza_ppo/best_model.zip \
+    --track tracks/monza.json \
+    --laps 5
+```
+
+**Viewer Controls:**
+- `SPACE` : Pause/Resume
+- `R` : Reset episode
+- `H` : Toggle HUD display
+- `D` : Toggle debug info
+- `+/-` : Zoom in/out
+- `ESC` : Quit
+
+### 3. Optional: Convert Custom Circuits
+
+If you have F1 racing line CSV data (`x_m,y_m,w_tr_right_m,w_tr_left_m`):
+
+```bash
+# Place CSV in tracks/csv/ and convert
+python scripts/csv_to_track.py tracks/csv/your_circuit.csv --tolerance 3.5 --laps 5
 ```
 
 The tolerance parameter controls simplification (higher = fewer points, better performance).
 
-### 2. Train an Agent
+## Available Circuits
+
+| Circuit | Length | Difficulty | Timesteps | Characteristics |
+|---------|--------|-----------|-----------|-----------------|
+| Monza | 5.78 km | ⭐ Easy | 500k | Wide track, high-speed, long straights |
+| Catalunya | 4.63 km | ⭐⭐ Medium | 500k | Balanced, mixed speed corners |
+| Yas Marina | 5.53 km | ⭐⭐ Medium | 500k | Modern, technical sections |
+| Budapest | 4.36 km | ⭐⭐ Medium | 500k | Tight, low-speed, technical |
+| Austin (COTA) | 5.49 km | ⭐⭐⭐ Medium-Hard | 600k | Technical corners, elevation |
+| Nürburgring | 5.13 km | ⭐⭐⭐ Medium-Hard | 600k | Technical, varied corners |
+| Spa-Francorchamps | 6.98 km | ⭐⭐⭐⭐ Hard | 800k | Longest, varied, challenging |
+
+All circuits optimized using Douglas-Peucker algorithm with 3.5m tolerance, achieving 90-96% point reduction while preserving racing line accuracy.
+
+**Recommended training order:** Monza → Catalunya → Budapest → Spa (easy to hard)
+
+## Training Guide
+
+### Quick Start - Train on Specific Circuits
+
+Each circuit has different characteristics and difficulty. Train your agent on the circuits you want to master:
+
+#### 🏁 Budapest (Hungaroring) - Technical, Tight Corners
+**Difficulty:** Medium | **Best for:** Learning precise control
 
 ```bash
-# Train on Budapest (technical circuit, recommended for learning)
 python scripts/train_agent.py \
     --track tracks/budapest.json \
     --algorithm PPO \
@@ -92,62 +173,153 @@ python scripts/train_agent.py \
     --eval-freq 10000
 ```
 
-Expected training time: 1-2 hours on CPU for 500k timesteps.
-
-### 3. Visualize Results
+#### 🏁 Monza (Temple of Speed) - High-Speed, Long Straights
+**Difficulty:** Easy | **Best for:** Speed control
 
 ```bash
-python scripts/watch_agent.py \
-    --model trained_models/budapest_ppo/best_model.zip \
-    --track tracks/budapest.json \
-    --laps 5
+python scripts/train_agent.py \
+    --track tracks/monza.json \
+    --algorithm PPO \
+    --timesteps 500000 \
+    --output trained_models/monza_ppo \
+    --eval-freq 10000
 ```
 
-**Viewer Controls:**
-- `+/-` : Adjust zoom
-- `H` : Toggle HUD display
-- `T` : Toggle trajectory trail
-- `SPACE` : Pause/Resume
-- `R` : Reset episode
-- `ESC` : Exit
+#### 🏁 Spa-Francorchamps - Long, Varied, Iconic
+**Difficulty:** Hard | **Best for:** Endurance and variety
 
-## Available Circuits
+```bash
+python scripts/train_agent.py \
+    --track tracks/spa.json \
+    --algorithm PPO \
+    --timesteps 800000 \
+    --output trained_models/spa_ppo \
+    --eval-freq 10000
+```
 
-| Circuit | Real Length | Width | Points | Characteristics |
-|---------|-------------|-------|--------|-----------------|
-| Austin (COTA) | 5.49 km | 14.0m | 71 | Technical corners, elevation |
-| Budapest | 4.36 km | 9.8m | 59 | Tight, low-speed, technical |
-| Catalunya | 4.63 km | 11.2m | 66 | Balanced, mixed speed |
-| Monza | 5.78 km | 9.3m | 46 | High-speed, long straights |
-| Nürburgring | 5.13 km | 12.1m | 66 | Technical, varied corners |
-| Spa-Francorchamps | 6.98 km | 9.6m | 79 | Longest, high-speed, iconic |
-| Yas Marina | 5.53 km | 12.7m | 59 | Modern, technical sections |
+#### 🏁 Catalunya (Barcelona) - Balanced, Mixed Speed
+**Difficulty:** Medium | **Best for:** All-around skills
 
-All circuits optimized using Douglas-Peucker algorithm with 3.5m tolerance, achieving 90-96% point reduction while preserving racing line accuracy.
+```bash
+python scripts/train_agent.py \
+    --track tracks/catalunya.json \
+    --algorithm PPO \
+    --timesteps 500000 \
+    --output trained_models/catalunya_ppo \
+    --eval-freq 10000
+```
 
-## Training Guide
+#### 🏁 Austin (COTA) - Technical with Elevation
+**Difficulty:** Medium-Hard | **Best for:** Complex racing
+
+```bash
+python scripts/train_agent.py \
+    --track tracks/austin.json \
+    --algorithm PPO \
+    --timesteps 600000 \
+    --output trained_models/austin_ppo \
+    --eval-freq 10000
+```
+
+#### 🏁 Nürburgring (GP-Strecke) - Varied Corners
+**Difficulty:** Medium-Hard | **Best for:** Technical variety
+
+```bash
+python scripts/train_agent.py \
+    --track tracks/nuerburgring.json \
+    --algorithm PPO \
+    --timesteps 600000 \
+    --output trained_models/nuerburgring_ppo \
+    --eval-freq 10000
+```
+
+#### 🏁 Yas Marina (Abu Dhabi) - Modern, Technical Sections
+**Difficulty:** Medium | **Best for:** Modern circuit mastery
+
+```bash
+python scripts/train_agent.py \
+    --track tracks/yasmarina.json \
+    --algorithm PPO \
+    --timesteps 500000 \
+    --output trained_models/yasmarina_ppo \
+    --eval-freq 10000
+```
+
+### Progressive Training Strategy
+
+If your agent struggles to complete circuits, use this curriculum:
+
+**Step 1: Start Easy - Monza (Wide, Fast)**
+```bash
+python scripts/train_agent.py \
+    --track tracks/monza.json \
+    --algorithm PPO \
+    --timesteps 500000 \
+    --output trained_models/progressive_agent
+```
+
+**Step 2: Medium Difficulty - Catalunya (Balanced)**
+```bash
+python scripts/train_agent.py \
+    --track tracks/catalunya.json \
+    --algorithm PPO \
+    --timesteps 500000 \
+    --model trained_models/progressive_agent/best_model.zip \
+    --output trained_models/progressive_agent
+```
+
+**Step 3: Technical - Budapest (Tight)**
+```bash
+python scripts/train_agent.py \
+    --track tracks/budapest.json \
+    --algorithm PPO \
+    --timesteps 500000 \
+    --model trained_models/progressive_agent/best_model.zip \
+    --output trained_models/progressive_agent
+```
+
+**Step 4: Challenge - Spa (Long, Varied)**
+```bash
+python scripts/train_agent.py \
+    --track tracks/spa.json \
+    --algorithm PPO \
+    --timesteps 800000 \
+    --model trained_models/progressive_agent/best_model.zip \
+    --output trained_models/progressive_agent
+```
+
+### Training All Circuits Sequentially
+
+To create a general agent that can drive on any circuit:
+
+```bash
+# Train on all 7 circuits
+for circuit in monza catalunya budapest austin nuerburgring spa yasmarina; do
+    echo "Training on $circuit..."
+    python scripts/train_agent.py \
+        --track tracks/${circuit}.json \
+        --algorithm PPO \
+        --timesteps 500000 \
+        --model trained_models/multi_circuit/best_model.zip \
+        --output trained_models/multi_circuit \
+        --eval-freq 10000
+done
+```
+
+### Troubleshooting Failed Laps
+
+If your agent can't complete circuits:
+
+1. **Increase training time:** 500k → 1M timesteps
+2. **Use curriculum learning:** Start with easier circuits (Monza → Catalunya → Budapest)
+3. **Try SAC algorithm:** Better for continuous control
+4. **Check with visualization:** Use `watch_agent.py` to see what's failing
 
 See [TRAINING.md](TRAINING.md) for comprehensive instructions:
 - Algorithm selection (PPO vs SAC vs TD3)
-- Single vs multi-circuit training strategies
 - Hyperparameter tuning
 - Performance metrics
-- Troubleshooting common issues
-
-### Recommended Training Strategy
-
-**For beginners:**
-1. Start with Budapest (4.36 km, technical)
-2. Train 500k timesteps with PPO
-3. Evaluate performance
-4. If successful, expand to other circuits
-
-**For generalization:**
-Train sequentially on varied circuits:
-- Budapest (technical)
-- Monza (high-speed)
-- Spa (long, varied)
-- Catalunya (balanced)
+- Advanced troubleshooting
 
 ## Environment Specifications
 
@@ -247,9 +419,10 @@ Full physics documentation in component source files.
 - Pit stop mechanics
 
 **Phase 3: Visualization** - COMPLETE
-- PyGame renderer
+- Arcade GPU renderer (OpenGL 3.3+)
 - F1 TV-style HUD
 - Real-time telemetry display
+- Dynamic camera and effects
 
 **Phase 4: Training System** - COMPLETE
 - PPO, SAC, TD3 algorithms
@@ -281,7 +454,7 @@ Test coverage: 28+ unit tests covering all core components.
 ```
 gymnasium>=0.29.0
 stable-baselines3>=2.0.0
-pygame>=2.5.0
+arcade>=3.3.3
 numpy>=1.24.0
 scipy>=1.11.0
 ```
@@ -320,4 +493,4 @@ If you use this project in research, please cite:
 - Real F1 circuit racing line data from open-source datasets
 - [Stable-Baselines3](https://stable-baselines3.readthedocs.io/) for RL algorithms
 - [Gymnasium](https://gymnasium.farama.org/) for environment framework
-- [PyGame](https://www.pygame.org/) for visualization
+- [Python Arcade](https://api.arcade.academy/) for GPU-accelerated visualization
